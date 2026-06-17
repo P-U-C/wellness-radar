@@ -19,3 +19,7 @@ raw/
 tmp/
 *.log
 !codex-build.log
+
+# codex build orchestration artifacts (not part of the deliverable)
+codex-build.log
+.codex-build-prompt.md
