@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: wellness_radar
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wellness_radar"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/wellness_radar
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+    command: ["sh", "-c", "python -m db.migrate && uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  jobs:
+    build:
+      context: .
+      dockerfile: infra/docker/python.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/wellness_radar
+      RAW_STORAGE_DIR: /app/raw
+      CITY_VANCOUVER_LIMIT: 75
+    command: ["sh", "-c", "python -m db.migrate && python -m apps.jobs.runner city_vancouver_licences --limit $${CITY_VANCOUVER_LIMIT:-75} && python -m apps.jobs.scheduler"]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - raw_payloads:/app/raw
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    command: ["pnpm", "--filter", "@wellness-radar/web", "dev", "--host", "0.0.0.0"]
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  raw_payloads:
