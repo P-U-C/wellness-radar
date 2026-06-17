@@ -1,0 +1,32 @@
+milestone,title,labels,dependencies,acceptance_criteria
+M0,Repo scaffold and Docker Compose,"epic:foundation,priority:p0,agent-ready",,"docker compose starts PostGIS, API, jobs, web; /health returns ok; CI skeleton present"
+M0,Add database migrations for canonical schema,"epic:foundation,priority:p0,agent-ready",Repo scaffold and Docker Compose,Migrations apply cleanly on fresh PostGIS DB; required indexes exist
+M0,Seed source_registry,"epic:governance,priority:p0,agent-ready",Add database migrations for canonical schema,source_registry has MVP sources and rights_notes placeholders marked needs_review
+M1,Build BC geo-filter package,"epic:geo,priority:p0,agent-ready",Repo scaffold and Docker Compose,"bc_gate implements bbox, PiP, province/text, WA negative filters; tests pass"
+M1,Add BC/WA geo-filter fixtures,"epic:geo,priority:p0,agent-ready",Build BC geo-filter package,10+ BC accepted and 10+ WA rejected fixtures; rejected_record logging tested
+M1,Build adapter base interface and runner,"epic:ingestion,priority:p0,agent-ready",Add database migrations for canonical schema;Build BC geo-filter package,No-op adapter can fetch/normalize/persist/reject; source_run metrics populated
+M1,City of Vancouver business licences adapter,"epic:ingestion,priority:p0,agent-ready",Build adapter base interface and runner,Real licence records ingest into operator/source_event; idempotent; provenance populated
+M1,Read API: operators and signals,"epic:foundation,priority:p0,agent-ready",City of Vancouver business licences adapter,GET /operators and GET /signals return paginated data with filters
+M1,MapLibre dashboard shell,"epic:frontend,priority:p0,agent-ready",Read API: operators and signals,Dark map renders real operators with clustering and legend
+M1,Signal feed rail,"epic:frontend,priority:p0,agent-ready",Read API: operators and signals,"Reverse chronological signal cards show source, trust, timestamp, confidence"
+M1,Map/feed synchronization,"epic:frontend,priority:p0,agent-ready",MapLibre dashboard shell;Signal feed rail,Click card flies to map; click pin filters/highlights feed
+M1,Entity drawer with provenance,"epic:frontend,priority:p0,agent-ready",Map/feed synchronization,"Drawer shows profile, timeline, nearby, source_refs"
+M2,OSM Overpass adapter,"epic:ingestion,priority:p1,agent-ready",Build adapter base interface and runner,Real Metro Vancouver wellness POIs ingested and deduped
+M2,OrgBook BC enrichment adapter,"epic:ingestion,priority:p1,agent-ready",Build adapter base interface and runner,Operators matched to OrgBook where possible; unmatched explicit
+M2,RSS/news adapter,"epic:ingestion,priority:p1,agent-ready",Build adapter base interface and runner,BC-local RSS items create source_events/signals
+M2,BC Gov News / Health Canada recall adapters,"epic:ingestion,priority:p1,agent-ready",Build adapter base interface and runner,Official regulatory/recall signals generated
+M2,Manual recovery-club seed data,"epic:ingestion,priority:p1,agent-ready",Add database migrations for canonical schema,10+ named recovery operators seeded with provenance and geocoding confidence
+M2,Manual people CSV import,"epic:people,priority:p1,agent-ready",Add database migrations for canonical schema,CSV import creates people and affiliations with source_refs
+M2,People leaderboard stub,"epic:people,priority:p1,agent-ready",Manual people CSV import,"Sortable leaderboard renders role, affiliation, confidence"
+M2,AI signal enrichment service,"epic:ai,priority:p1,agent-ready",RSS/news adapter,AI fills summary/why_it_matters only; prompt_version stored; deterministic fields preserved
+M2,Source freshness admin dashboard,"epic:ops,priority:p1,agent-ready",Build adapter base interface and runner,"Admin page shows source_run status, stale sources, rejected counts"
+M3,Finalize category enum and NAICS crosswalk,"epic:analytics,priority:p1,needs-human-review",OSM Overpass adapter;OrgBook BC enrichment adapter,Enum frozen; mappings documented; analytics unblocked
+M3,StatCan denominator adapter,"epic:analytics,priority:p2,agent-ready",Finalize category enum and NAICS crosswalk,Population/business count denominators stored by geography
+M3,White-space heatmap,"epic:analytics,priority:p2,agent-ready",StatCan denominator adapter,Heatmap explains supply/demand components and confidence
+M3,Opportunity scorecards,"epic:analytics,priority:p2,agent-ready",White-space heatmap,Scorecards show component breakdown; no score without confidence
+M3,Google Trends peer-city tiles,"epic:analytics,priority:p2,agent-ready",Finalize category enum and NAICS crosswalk,Trend tiles render sparklines and growth class
+M3,Influence scoring,"epic:people,priority:p2,agent-ready",People leaderboard stub,Score components reproducible; methodology page added
+M3,Sigma.js people graph,"epic:people,priority:p2,agent-ready",Influence scoring,"Graph renders people/org nodes, edges, centrality, communities"
+M4,CRE adapter spike,"epic:ingestion,priority:p2,needs-human-review",White-space heatmap,Source rights reviewed; sample listings linked to hotspots
+M4,Alert subscriptions,"epic:ops,priority:p2,agent-ready",Source freshness admin dashboard,Users can save category/geography watchlists
+M4,TV/kiosk mode,"epic:frontend,priority:p2,agent-ready",Map/feed synchronization,Fullscreen ambient view with live feed and map
