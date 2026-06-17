@@ -1,0 +1,31 @@
+{
+  "accepted": [
+    {"title": "Vancouver BC", "municipality": "Vancouver", "province": "BC", "lat": 49.2827, "lng": -123.1207},
+    {"title": "Burnaby BC", "municipality": "Burnaby", "province": "BC", "lat": 49.2488, "lng": -122.9805},
+    {"title": "Richmond BC", "municipality": "Richmond", "province": "BC", "lat": 49.1666, "lng": -123.1336},
+    {"title": "Surrey BC", "municipality": "Surrey", "province": "BC", "lat": 49.1913, "lng": -122.8490},
+    {"title": "Coquitlam BC", "municipality": "Coquitlam", "province": "BC", "lat": 49.2838, "lng": -122.7932},
+    {"title": "North Vancouver BC", "municipality": "North Vancouver", "province": "BC", "lat": 49.3200, "lng": -123.0724},
+    {"title": "Port Moody BC", "municipality": "Port Moody", "province": "BC", "lat": 49.2832, "lng": -122.8314},
+    {"title": "New Westminster BC", "municipality": "New Westminster", "province": "BC", "lat": 49.2057, "lng": -122.9110},
+    {"title": "White Rock BC", "municipality": "White Rock", "province": "BC", "lat": 49.0253, "lng": -122.8028},
+    {"title": "Vancouver CMA", "statcan_geo_code": "933", "text": "Vancouver CMA 933"},
+    {"title": "British Columbia Province", "statcan_geo_code": "59", "text": "Province 59 BC"}
+  ],
+  "rejected": [
+    {"title": "Vancouver WA", "municipality": "Vancouver", "province": "WA", "text": "Vancouver, WA"},
+    {"title": "Vancouver Washington", "municipality": "Vancouver", "province": "Washington", "text": "Vancouver Washington"},
+    {"title": "Clark County", "text": "Clark County wellness studio"},
+    {"title": "ZIP 98660", "text": "Vancouver WA 98660"},
+    {"title": "ZIP 98661", "text": "Vancouver WA 98661"},
+    {"title": "ZIP 98662", "text": "Vancouver WA 98662"},
+    {"title": "ZIP 98663", "text": "Vancouver WA 98663"},
+    {"title": "ZIP 98664", "text": "Vancouver WA 98664"},
+    {"title": "ZIP 98665", "text": "Vancouver WA 98665"},
+    {"title": "ZIP 98682", "text": "Vancouver WA 98682"},
+    {"title": "ZIP 98683", "text": "Vancouver WA 98683"},
+    {"title": "ZIP 98684", "text": "Vancouver WA 98684"},
+    {"title": "ZIP 98685", "text": "Vancouver WA 98685"},
+    {"title": "ZIP 98686", "text": "Vancouver WA 98686"}
+  ]
+}
