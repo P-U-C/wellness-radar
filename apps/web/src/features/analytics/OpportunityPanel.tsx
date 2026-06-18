@@ -48,6 +48,9 @@ export function OpportunityPanel({ scorecards, heatmapCells, velocity }: Props) 
               ))}
             </div>
             <small>{scorecard.caveat}</small>
+            <small>
+              {scorecard.source_refs.length} refs · {formatFreshness(scorecard.freshness_age_hours)}
+            </small>
           </article>
         ))}
       </div>
@@ -76,4 +79,17 @@ function formatComponent(value: unknown): string {
     return "-";
   }
   return `${Math.round(value * 100)}`;
+}
+
+function formatFreshness(ageHours?: number | null): string {
+  if (ageHours === null || ageHours === undefined) {
+    return "freshness n/a";
+  }
+  if (ageHours < 1) {
+    return "updated <1h";
+  }
+  if (ageHours < 48) {
+    return `updated ${Math.round(ageHours)}h`;
+  }
+  return `updated ${Math.round(ageHours / 24)}d`;
 }

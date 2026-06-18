@@ -22,6 +22,9 @@ export function EntityDrawer({ operator, signals, nearbyOperators, onClose }: Pr
         <span className="eyebrow">{operator.status}</span>
         <h2>{operator.name}</h2>
         <p>{operator.address}</p>
+        <small className="drawerMeta">
+          {operator.source_refs.length} refs · {formatFreshness(operator.freshness_age_hours)}
+        </small>
         <div className="categoryRow">
           {operator.categories.map((category) => (
             <span key={category}>{category.replaceAll("_", " ")}</span>
@@ -82,4 +85,17 @@ export function EntityDrawer({ operator, signals, nearbyOperators, onClose }: Pr
       </section>
     </aside>
   );
+}
+
+function formatFreshness(ageHours?: number | null): string {
+  if (ageHours === null || ageHours === undefined) {
+    return "freshness n/a";
+  }
+  if (ageHours < 1) {
+    return "updated <1h";
+  }
+  if (ageHours < 48) {
+    return `updated ${Math.round(ageHours)}h`;
+  }
+  return `updated ${Math.round(ageHours / 24)}d`;
 }

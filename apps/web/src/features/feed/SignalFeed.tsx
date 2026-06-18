@@ -62,6 +62,10 @@ export function SignalFeed({
                 {new Date(signal.occurred_at).toLocaleDateString()}
                 <strong>{Math.round(signal.confidence_score * 100)}%</strong>
               </span>
+              <span className="signalMeta">
+                {signal.source_refs.length} refs
+                <strong>{formatFreshness(signal.freshness_age_hours)}</strong>
+              </span>
             </button>
             <div className="sourceLine">
               <span>{signal.source_name}</span>
@@ -77,4 +81,17 @@ export function SignalFeed({
       </div>
     </aside>
   );
+}
+
+function formatFreshness(ageHours?: number | null): string {
+  if (ageHours === null || ageHours === undefined) {
+    return "freshness n/a";
+  }
+  if (ageHours < 1) {
+    return "<1h";
+  }
+  if (ageHours < 48) {
+    return `${Math.round(ageHours)}h`;
+  }
+  return `${Math.round(ageHours / 24)}d`;
 }

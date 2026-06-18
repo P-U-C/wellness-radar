@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Monitor, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SourceFreshnessPanel } from "../features/admin/SourceFreshnessPanel";
 import { OpportunityPanel } from "../features/analytics/OpportunityPanel";
@@ -6,10 +6,12 @@ import { TrendTiles } from "../features/analytics/TrendTiles";
 import { EntityDrawer } from "../features/entities/EntityDrawer";
 import { SignalFeed } from "../features/feed/SignalFeed";
 import { PeopleGraph } from "../features/graph/PeopleGraph";
+import { KioskMode } from "../features/kiosk/KioskMode";
 import { OperatorMap } from "../features/map/OperatorMap";
 import { PeopleLeaderboard } from "../features/people/PeopleLeaderboard";
 import {
   fetchCategoryVelocity,
+  fetchObservability,
   fetchOperators,
   fetchOpportunityScorecards,
   fetchPeople,
@@ -22,6 +24,7 @@ import {
   type CategoryVelocity,
   type GraphEdge,
   type GraphNode,
+  type ObservabilitySummary,
   type Operator,
   type OpportunityHeatmapCell,
   type OpportunityScorecard,
@@ -43,6 +46,8 @@ const CATEGORIES = [
   { value: "community_social_wellness", label: "Social" }
 ];
 
+const kioskMode = new URLSearchParams(window.location.search).get("mode") === "kiosk";
+
 export function App() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -55,6 +60,7 @@ export function App() {
   const [trends, setTrends] = useState<TrendTile[]>([]);
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
+  const [observability, setObservability] = useState<ObservabilitySummary | null>(null);
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
   const [peopleSort, setPeopleSort] = useState("influence");
@@ -76,7 +82,8 @@ export function App() {
         scorecardData,
         velocityData,
         trendData,
-        graphData
+        graphData,
+        observabilityData
       ] = await Promise.all([
         fetchOperators(category),
         fetchSignals(),
@@ -87,7 +94,8 @@ export function App() {
         fetchOpportunityScorecards(analyticsCategory),
         fetchCategoryVelocity(analyticsCategory),
         fetchTrends(),
-        fetchPeopleGraph()
+        fetchPeopleGraph(),
+        fetchObservability()
       ]);
       setOperators(operatorData);
       setSignals(signalData);
@@ -100,6 +108,7 @@ export function App() {
       setTrends(trendData);
       setGraphNodes(graphData.nodes);
       setGraphEdges(graphData.edges);
+      setObservability(observabilityData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load API data");
     } finally {
@@ -141,6 +150,19 @@ export function App() {
 
   const selectedOperator = visibleOperators.find((operator) => operator.id === selectedOperatorId) ?? null;
   const latestRun = sourceRuns[0];
+  const firingAlertCount = observability?.alerts.filter((alert) => alert.firing).length ?? null;
+
+  if (kioskMode) {
+    return (
+      <KioskMode
+        operators={visibleOperators}
+        heatmapCells={heatmapCells}
+        signals={visibleSignals}
+        selectedOperatorId={selectedOperatorId}
+        onSelectOperator={setSelectedOperatorId}
+      />
+    );
+  }
 
   return (
     <main className="shell">
@@ -164,6 +186,13 @@ export function App() {
           <span className="freshness">
             {latestRun ? `${latestRun.source_name}: ${latestRun.status}` : "No source run yet"}
           </span>
+          {firingAlertCount !== null ? (
+            <span className="freshness">{firingAlertCount} ops alerts</span>
+          ) : null}
+          <a className="iconButton" href="?mode=kiosk" title="Open kiosk mode">
+            <Monitor size={16} />
+            <span>Kiosk</span>
+          </a>
           <button className="iconButton" type="button" onClick={() => void loadData()} title="Refresh">
             <RefreshCw size={16} />
             <span>Refresh</span>

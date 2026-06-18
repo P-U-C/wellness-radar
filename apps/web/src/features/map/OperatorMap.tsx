@@ -1,7 +1,7 @@
 import type { Feature, Point } from "geojson";
 import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Map, { Layer, Source, type LayerProps, type MapLayerMouseEvent, type MapRef } from "react-map-gl/maplibre";
 import type { Operator, OpportunityHeatmapCell } from "../../lib/api";
 import { BC_BBOX, heatmapToFeatureCollection, operatorsToFeatureCollection } from "../../lib/geo";
@@ -120,8 +120,11 @@ const heatmapLayer: LayerProps = {
 
 export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSelectOperator }: Props) {
   const mapRef = useRef<MapRef | null>(null);
+  const [hoveredOperatorId, setHoveredOperatorId] = useState<string | null>(null);
   const data = useMemo(() => operatorsToFeatureCollection(operators), [operators]);
   const heatmapData = useMemo(() => heatmapToFeatureCollection(heatmapCells), [heatmapCells]);
+  const inspectedOperator =
+    operators.find((item) => item.id === (selectedOperatorId ?? hoveredOperatorId)) ?? null;
   const selected = useMemo(
     () =>
       ({
@@ -178,6 +181,11 @@ export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSel
         maxZoom={17}
         interactiveLayerIds={["operator-points", "operator-clusters"]}
         onClick={handleClick}
+        onMouseMove={(event) => {
+          const feature = event.features?.find((item) => item.layer.id === "operator-points");
+          setHoveredOperatorId(String(feature?.properties?.id ?? "") || null);
+        }}
+        onMouseLeave={() => setHoveredOperatorId(null)}
         attributionControl={false}
       >
         <Source id="whitespace" type="geojson" data={heatmapData}>
@@ -197,6 +205,26 @@ export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSel
         <span><i className="legendAllied" />Allied</span>
         <span><i className="legendWhitespace" />White-space</span>
       </div>
+      {inspectedOperator ? (
+        <div className="mapInspect" aria-live="polite">
+          <strong>{inspectedOperator.name}</strong>
+          <span>{inspectedOperator.source_refs[0]?.source_name ?? "unknown source"}</span>
+          <small>{formatFreshness(inspectedOperator.freshness_age_hours)}</small>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function formatFreshness(ageHours?: number | null): string {
+  if (ageHours === null || ageHours === undefined) {
+    return "freshness unknown";
+  }
+  if (ageHours < 1) {
+    return "updated under 1h ago";
+  }
+  if (ageHours < 48) {
+    return `updated ${Math.round(ageHours)}h ago`;
+  }
+  return `updated ${Math.round(ageHours / 24)}d ago`;
 }

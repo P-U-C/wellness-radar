@@ -88,6 +88,7 @@ select {
   gap: 8px;
   padding: 0 12px;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .workspace {
@@ -279,6 +280,33 @@ select {
   border-radius: 8px;
   background: rgba(16, 18, 20, 0.88);
   color: #dce2e4;
+  font-size: 12px;
+}
+
+.mapInspect {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: min(280px, calc(100% - 32px));
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #343b40;
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.9);
+}
+
+.mapInspect strong,
+.mapInspect span,
+.mapInspect small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mapInspect span,
+.mapInspect small,
+.drawerMeta {
+  color: #a8b0b5;
   font-size: 12px;
 }
 
@@ -699,6 +727,89 @@ a {
   gap: 6px;
 }
 
+.kioskShell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  background: #101214;
+}
+
+.kioskShell .mapStage {
+  grid-area: 1 / 1;
+}
+
+.kioskFeed {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  bottom: 20px;
+  width: min(390px, calc(100vw - 40px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #343b40;
+  border-radius: 8px;
+  background: rgba(16, 18, 20, 0.9);
+  backdrop-filter: blur(6px);
+}
+
+.kioskHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.kioskHeader h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.kioskHeader span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #2bd4a7;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kioskSignalList {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.kioskSignalList button {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid #2a2f33;
+  border-radius: 8px;
+  background: #1a1e21;
+  color: #f5f0e8;
+  padding: 10px;
+  text-align: left;
+}
+
+.kioskSignalList button:disabled {
+  color: #cbd2d6;
+}
+
+.kioskSignalList strong {
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.kioskSignalList span {
+  color: #a8b0b5;
+  font-size: 12px;
+}
+
 @media (max-width: 1100px) {
   body {
     overflow: auto;
@@ -740,6 +851,15 @@ a {
     width: auto;
     max-width: none;
     max-height: 80vh;
+  }
+
+  .kioskFeed {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: 12px;
+    width: auto;
+    height: min(45vh, 360px);
   }
 }
 

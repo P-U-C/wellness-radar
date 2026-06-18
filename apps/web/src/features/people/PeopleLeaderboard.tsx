@@ -31,6 +31,9 @@ export function PeopleLeaderboard({ people, sort, onSortChange }: Props) {
               <span>{person.primary_role ?? "Public professional"}</span>
               <small>{person.primary_affiliation ?? "Source-backed public record"}</small>
               {person.influence_explanation ? <small>{person.influence_explanation}</small> : null}
+              <small>
+                {person.source_refs.length} refs · {formatFreshness(person.freshness_age_hours)}
+              </small>
               {person.influence_components ? (
                 <div className="miniComponents">
                   <span>authority {formatPercent(person.influence_components.institutional_authority)}</span>
@@ -62,4 +65,17 @@ function formatPercent(value: unknown): string {
     return "-";
   }
   return `${Math.round(value * 100)}`;
+}
+
+function formatFreshness(ageHours?: number | null): string {
+  if (ageHours === null || ageHours === undefined) {
+    return "freshness n/a";
+  }
+  if (ageHours < 1) {
+    return "updated <1h";
+  }
+  if (ageHours < 48) {
+    return `updated ${Math.round(ageHours)}h`;
+  }
+  return `updated ${Math.round(ageHours / 24)}d`;
 }

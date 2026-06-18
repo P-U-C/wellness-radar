@@ -23,6 +23,8 @@ export type Operator = {
   source_refs: SourceRef[];
   licence_ref?: string;
   signals?: Signal[];
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
 };
 
 export type Signal = {
@@ -48,6 +50,8 @@ export type Signal = {
   ai_severity_suggestion?: string | null;
   ai_confidence_score?: number | null;
   source_refs: SourceRef[];
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
 };
 
 export type SourceRun = {
@@ -99,6 +103,8 @@ export type Person = {
   influence_source_refs?: SourceRef[];
   confidence_score: number;
   source_refs: SourceRef[];
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
 };
 
 export type OpportunityHeatmapCell = {
@@ -120,6 +126,8 @@ export type OpportunityHeatmapCell = {
   confidence_score: number;
   trace_payload: Record<string, unknown>;
   generated_at: string;
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
 };
 
 export type OpportunityScorecard = {
@@ -134,6 +142,8 @@ export type OpportunityScorecard = {
   calculation_method: string;
   caveat: string;
   generated_at: string;
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
 };
 
 export type CategoryVelocity = {
@@ -148,6 +158,23 @@ export type CategoryVelocity = {
   source_refs: SourceRef[];
   confidence_score: number;
   calculated_at: string;
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
+};
+
+export type ObservabilitySummary = {
+  runtime: {
+    api_requests_total: number;
+    api_errors_total: number;
+    api_latency_ms_avg: number;
+    map_query_latency_ms_avg: number;
+  };
+  alerts: Array<{
+    condition: string;
+    firing: boolean;
+    severity: string;
+    summary: string;
+  }>;
 };
 
 export type TrendTile = {
@@ -191,9 +218,23 @@ export type GraphEdge = {
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const API_AUTH_TOKEN = import.meta.env.VITE_API_AUTH_TOKEN as string | undefined;
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`);
+async function getJson<T>(
+  path: string,
+  options: { auth?: boolean; optional?: boolean } = {}
+): Promise<T | null> {
+  if (options.auth && !API_AUTH_TOKEN && options.optional) {
+    return null;
+  }
+  const headers = new Headers();
+  if (options.auth && API_AUTH_TOKEN) {
+    headers.set("Authorization", `Bearer ${API_AUTH_TOKEN}`);
+  }
+  const response = await fetch(`${API_BASE}${path}`, { headers });
+  if (options.optional && (response.status === 401 || response.status === 403)) {
+    return null;
+  }
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
@@ -206,6 +247,9 @@ export async function fetchOperators(category?: string): Promise<Operator[]> {
     params.set("category", category);
   }
   const data = await getJson<{ items: Operator[] }>(`/operators?${params.toString()}`);
+  if (!data) {
+    return [];
+  }
   return data.items;
 }
 
@@ -215,22 +259,38 @@ export async function fetchSignals(operatorId?: string): Promise<Signal[]> {
     params.set("related_operator_id", operatorId);
   }
   const data = await getJson<{ items: Signal[] }>(`/signals?${params.toString()}`);
+  if (!data) {
+    return [];
+  }
   return data.items;
 }
 
 export async function fetchSourceRuns(): Promise<SourceRun[]> {
-  const data = await getJson<{ items: SourceRun[] }>("/admin/source-runs?limit=5");
-  return data.items;
+  const data = await getJson<{ items: SourceRun[] }>("/admin/source-runs?limit=5", {
+    auth: true,
+    optional: true
+  });
+  return data?.items ?? [];
 }
 
 export async function fetchSourceFreshness(): Promise<SourceFreshness[]> {
-  const data = await getJson<{ items: SourceFreshness[] }>("/admin/source-freshness");
-  return data.items;
+  const data = await getJson<{ items: SourceFreshness[] }>("/admin/source-freshness", {
+    auth: true,
+    optional: true
+  });
+  return data?.items ?? [];
+}
+
+export async function fetchObservability(): Promise<ObservabilitySummary | null> {
+  return getJson<ObservabilitySummary>("/admin/observability", { auth: true, optional: true });
 }
 
 export async function fetchPeople(sort = "confidence"): Promise<Person[]> {
   const params = new URLSearchParams({ sort });
   const data = await getJson<{ items: Person[] }>(`/people?${params.toString()}`);
+  if (!data) {
+    return [];
+  }
   return data.items;
 }
 
@@ -239,6 +299,9 @@ export async function fetchWhitespace(category: string): Promise<OpportunityHeat
   const data = await getJson<{ items: OpportunityHeatmapCell[] }>(
     `/analytics/whitespace?${params.toString()}`
   );
+  if (!data) {
+    return [];
+  }
   return data.items;
 }
 
@@ -247,6 +310,9 @@ export async function fetchOpportunityScorecards(category: string): Promise<Oppo
   const data = await getJson<{ items: OpportunityScorecard[] }>(
     `/analytics/opportunity-scorecards?${params.toString()}`
   );
+  if (!data) {
+    return [];
+  }
   return data.items;
 }
 
@@ -255,14 +321,22 @@ export async function fetchCategoryVelocity(category: string): Promise<CategoryV
   const data = await getJson<{ items: CategoryVelocity[] }>(
     `/analytics/category-velocity?${params.toString()}`
   );
+  if (!data) {
+    return [];
+  }
   return data.items;
 }
 
 export async function fetchTrends(): Promise<TrendTile[]> {
   const data = await getJson<{ items: TrendTile[] }>("/trends");
-  return data.items;
+  return data?.items ?? [];
 }
 
 export async function fetchPeopleGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
-  return getJson<{ nodes: GraphNode[]; edges: GraphEdge[] }>("/people-graph");
+  return (
+    (await getJson<{ nodes: GraphNode[]; edges: GraphEdge[] }>("/people-graph")) ?? {
+      nodes: [],
+      edges: []
+    }
+  );
 }

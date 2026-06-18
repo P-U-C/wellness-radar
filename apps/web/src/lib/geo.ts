@@ -22,7 +22,17 @@ export function isInBcBounds(lat: number | null, lng: number | null): boolean {
 
 export function operatorsToFeatureCollection(
   operators: Operator[]
-): FeatureCollection<Point, { id: string; name: string; category: string; status: string }> {
+): FeatureCollection<
+  Point,
+  {
+    id: string;
+    name: string;
+    category: string;
+    status: string;
+    source: string;
+    freshness: string;
+  }
+> {
   return {
     type: "FeatureCollection",
     features: operators
@@ -34,7 +44,12 @@ export function operatorsToFeatureCollection(
           id: operator.id,
           name: operator.name,
           category: operator.categories[0] ?? "allied_health",
-          status: operator.status
+          status: operator.status,
+          source: operator.source_refs[0]?.source_name ?? "unknown",
+          freshness:
+            operator.freshness_age_hours === null || operator.freshness_age_hours === undefined
+              ? "unknown"
+              : `${Math.round(operator.freshness_age_hours)}h`
         }
       }))
   };
