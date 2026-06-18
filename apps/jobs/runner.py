@@ -158,7 +158,7 @@ class DatabaseRepository:
             UPDATE source_run
             SET
               status = %s::source_run_status,
-              completed_at = now(),
+              completed_at = clock_timestamp(),
               records_fetched = %s,
               records_persisted = %s,
               records_rejected = %s,
