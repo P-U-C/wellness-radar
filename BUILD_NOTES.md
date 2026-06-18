@@ -196,3 +196,90 @@ Results:
 - Opportunity heatmap, category velocity, peer-city trends, Sigma.js graph, and influence score explainability.
 - Source-rights/legal review for production attribution and republication policy.
 - Per-source/outlet scheduling, retries, and alerting instead of one-shot startup jobs.
+
+## M3
+
+Date: 2026-06-18 UTC
+
+### Completed Against Exit Checklist
+
+- Entity resolution added with `entity_resolution_match` and `entity_alias`. Matches use deterministic rules over normalized names, OrgBook/registry IDs, municipality, and `pg_trgm` similarity. Merges are logical aliases only, with confidence, provenance, review status, and reversible state.
+- Category enum is frozen in `category_taxonomy` and enforced on `operator.categories`. Draft NAICS mappings are seeded in `naics_category_crosswalk` and documented in `docs/analytics/category_naics_crosswalk.md` as `needs-human-review`.
+- StatCan denominator adapter added as `statcan_wds`. It stores CMA/CSD geography and population/business-count denominators from a recorded fixture, records raw payloads/source runs, writes source refs, and runs `bc_gate` before geography persist.
+- White-space heatmap and opportunity scorecards added with full component breakdown, source refs, source confidence, trace payloads, and a caveat that scores are supply-demand signals, not guaranteed economic attractiveness.
+- Category velocity analytics added for 30/90/180 day windows: new operators, jobs, events, and news/signal velocity.
+- Peer-city trend provider interface added with deterministic fixture fallback for Vancouver, Toronto, Seattle, Austin, and Melbourne wedge terms. API/UI clearly mark these rows as stub-backed.
+- Influence scoring added with the s.11.3 components, locality multiplier, recency decay, source confidence, persisted breakdowns, and “why this person appears” explanations. Public professional seed data remains the only people input.
+- Sigma.js people graph added with graphology, ForceAtlas2 worker layout, Louvain communities, and centrality sizing. Graph nodes cover people, orgs, operators, and events; edges include employee/speaker/mentioned-with style public relationships.
+- M3 API endpoints added: `/analytics/whitespace`, `/analytics/opportunity-scorecards`, `/analytics/category-velocity`, `/analytics/methodology`, `/trends`, and `/people-graph`.
+- Web dashboard now renders opportunity scorecards, velocity, peer-city trend tiles, influence breakdowns, Sigma graph, and a white-space map overlay.
+- Compose jobs now run `m2` then `m3` on startup.
+
+### How To Run / Verify
+
+```bash
+sudo -n docker compose up --build -d
+curl -s http://127.0.0.1:8000/health
+curl -s 'http://127.0.0.1:8000/analytics/whitespace?category=recovery_contrast_therapy&limit=1'
+curl -s 'http://127.0.0.1:8000/analytics/opportunity-scorecards?category=recovery_contrast_therapy&limit=1'
+curl -s 'http://127.0.0.1:8000/analytics/category-velocity?category=recovery_contrast_therapy'
+curl -s 'http://127.0.0.1:8000/trends?term=cold%20plunge'
+curl -s 'http://127.0.0.1:8000/people?sort=influence&limit=1'
+curl -s 'http://127.0.0.1:8000/people-graph'
+```
+
+Open the web app at `http://localhost:5173`.
+
+### Verified Commands
+
+```bash
+python3 -m pytest
+python3 -m ruff check .
+python3 -m mypy apps packages db
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+sudo -n docker compose down -v --remove-orphans
+sudo -n docker compose up -d db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m apps.jobs.runner m2 --limit 20
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m apps.jobs.runner m3
+sudo -n docker compose up --build -d
+```
+
+Results:
+
+- Python tests: 40 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web lint/typecheck: passed.
+- Web unit tests: 3 passed.
+- Web build: passed with the existing Vite large chunk warning, now larger because Sigma/graphology are bundled.
+- Clean DB migrations applied: `001`, `002`, `003`, `004`.
+- Clean M2 run with `--limit 20` succeeded across City, manual seed, OSM, RSS, official feeds, OrgBook, people import, and AI enrichment.
+- Clean M3 run succeeded:
+  - Entity resolution: 0 fetched/persisted on the clean sample because existing exact-name/OrgBook dedupe left no unresolved duplicate pairs.
+  - StatCan denominators: 6 fetched, 30 persisted, 0 rejected.
+  - Opportunity analytics: 20 fetched, 32 persisted.
+  - Peer-city trends: 30 fetched, 30 persisted.
+  - People graph: 76 fetched, 97 persisted in the clean sample run; full Compose run produced 227 nodes and 78 edges after the larger M2 startup.
+  - Influence scoring: 6 fetched, 6 persisted.
+- Full Compose startup returned API health `{"status":"ok"}` and web root HTTP 200.
+- Endpoint smoke checks confirmed opportunity rows include component breakdown/source confidence/source refs; trends return `is_stub: true`; people return influence components and explanation.
+
+### Stubbed / Needs Review
+
+- Peer-city trend tiles are intentionally stub-backed by `peer_city_trends_fixture` because no reviewed Google Trends API/key is available. They must not be presented as live Google Trends data.
+- StatCan denominator data uses a recorded M3 fixture shaped for the WDS/Census Profile flow. Production table/vector selection, attribution text, and caching policy remain `needs_review`.
+- NAICS crosswalk is drafted and flagged `needs-human-review`; no sign-off is claimed.
+- The `transit_access` score component is a centroid-to-core accessibility proxy for M3, not a true transit model.
+- Entity resolution has working deterministic merge/candidate logic, but the clean verification dataset produced no new unresolved matches.
+
+### M4 Pickup
+
+- Replace trend fixture fallback with a reviewed live provider or keep a clearly labelled non-live mode.
+- Replace CSD centroid proxy with reviewed neighborhood polygons and transit-access data.
+- Add correction/request-update workflow for people records before public launch.
+- Add RBAC/audit/export/subscription production hardening from Milestone 4.
+- Add CRE inputs only after source-rights review.
