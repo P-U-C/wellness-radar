@@ -88,8 +88,8 @@ export function App() {
     people: false,
     opportunity: true
   });
-  const [trustFilter] = useState("all");
-  const [signalTypeFilter] = useState("all");
+  const [trustFilter, setTrustFilter] = useState("all");
+  const [signalTypeFilter, setSignalTypeFilter] = useState("all");
   const [route, setRoute] = useState<RouteState>(() => routeFromPath(window.location.pathname));
   const [clock, setClock] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
@@ -180,6 +180,10 @@ export function App() {
       const isTyping = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
       if (event.key === "/" && !isTyping) {
         event.preventDefault();
+        if (screen === "search") {
+          window.dispatchEvent(new Event("wr-focus-search"));
+          return;
+        }
         navigate("/search");
       }
       if (event.key === "Escape") {
@@ -226,6 +230,15 @@ export function App() {
       .filter((signal) => !signal.related_operator_id || operatorIds.has(signal.related_operator_id))
       .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   }, [minConfidence, signalTypeFilter, signals, trustFilter, visibleOperators]);
+
+  const sourceBackedSignals = useMemo(
+    () =>
+      signals
+        .filter((signal) => signal.source_refs.length > 0)
+        .filter((signal) => !signal.related_operator_id || operators.some((operator) => operator.id === signal.related_operator_id))
+        .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)),
+    [operators, signals]
+  );
 
   const feedSignals = useMemo(() => {
     if (!selectedOperatorId) {
@@ -475,6 +488,7 @@ export function App() {
               loading={loading}
               error={error}
               signals={feedSignals}
+              operators={visibleOperators}
               selectedOperatorId={selectedOperatorId}
               selectedSignalId={selectedSignalId}
               onSelectSignal={onSelectSignal}
@@ -498,6 +512,29 @@ export function App() {
               setSelectedSignalId(null);
               navigate("/");
             }}
+          />
+        ) : screen === "feed" ? (
+          <SignalFeed
+            mode="screen"
+            loading={loading}
+            error={error}
+            signals={sourceBackedSignals}
+            operators={operators}
+            selectedOperatorId={selectedOperatorId}
+            selectedSignalId={selectedSignalId}
+            minConfidence={minConfidence}
+            trustFilter={trustFilter}
+            signalTypeFilter={signalTypeFilter}
+            onMinConfidenceChange={setMinConfidence}
+            onTrustFilterChange={setTrustFilter}
+            onSignalTypeFilterChange={setSignalTypeFilter}
+            onSelectSignal={onSelectSignal}
+            onClearSelection={() => {
+              setSelectedOperatorId(null);
+              setSelectedSignalId(null);
+            }}
+            onViewAll={() => undefined}
+            onOpenOperator={openOperator}
           />
         ) : (
           <DeferredScreen

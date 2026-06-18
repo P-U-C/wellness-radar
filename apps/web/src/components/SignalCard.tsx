@@ -9,10 +9,19 @@ type Props = {
   signal: Signal;
   selected?: boolean;
   variant?: "strip" | "stream" | "timeline";
+  context?: string | null;
+  actionLabel?: string;
   onSelect?: (signal: Signal) => void;
 };
 
-export function SignalCard({ signal, selected = false, variant = "stream", onSelect }: Props) {
+export function SignalCard({
+  signal,
+  selected = false,
+  variant = "stream",
+  context,
+  actionLabel,
+  onSelect
+}: Props) {
   const accent = colorForSignalType(signal.type || signal.severity);
   const source = signal.source_refs[0];
   const isButton = Boolean(onSelect);
@@ -23,6 +32,7 @@ export function SignalCard({ signal, selected = false, variant = "stream", onSel
         <span className="wr-signal-type" style={{ color: accent }}>
           {sentenceCase(signal.type || signal.severity)}
         </span>
+        {context ? <span className="wr-signal-context">{context}</span> : null}
         <span>{signal.freshness_age_hours !== undefined ? formatAgeFromHours(signal.freshness_age_hours) : formatSignalAge(signal.occurred_at)}</span>
       </div>
       <h3>{signal.title}</h3>
@@ -37,7 +47,15 @@ export function SignalCard({ signal, selected = false, variant = "stream", onSel
         <span className="wr-signal-confidence" style={{ color: magma(signal.confidence_score) }}>
           conf {formatScore(signal.confidence_score)}
         </span>
-        {signal.lat !== null && signal.lng !== null ? <MapPin aria-hidden size={13} /> : null}
+        {signal.lat !== null && signal.lng !== null ? (
+          actionLabel ? (
+            <span className="wr-signal-action">
+              <MapPin aria-hidden size={13} /> {actionLabel}
+            </span>
+          ) : (
+            <MapPin aria-hidden size={13} />
+          )
+        ) : null}
       </div>
     </>
   );
