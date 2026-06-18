@@ -24,3 +24,10 @@ tmp/
 codex-build.log
 .codex-build-prompt.md
 .codex-build-prompt*.md
+
+# codex design-redesign orchestration (local only)
+.codex-design-prompt*.md
+.codex-design-runner.sh
+codex-design.log
+.codex-design-done
+.codex-design-failed

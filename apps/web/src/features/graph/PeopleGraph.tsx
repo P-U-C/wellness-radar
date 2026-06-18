@@ -5,15 +5,18 @@ import { Network } from "lucide-react";
 import { useEffect, useRef } from "react";
 import Sigma from "sigma";
 import type { GraphEdge, GraphNode } from "../../lib/api";
+import { entity, text } from "../../lib/theme";
 
 type Props = {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string) => void;
 };
 
-const COMMUNITY_COLORS = ["#2bd4a7", "#f2c94c", "#7dd3fc", "#ff6b6b", "#c084fc", "#f59e0b"];
+const COMMUNITY_COLORS = [entity.operator, entity.people, entity.opportunity, entity.signal];
 
-export function PeopleGraph({ nodes, edges }: Props) {
+export function PeopleGraph({ nodes, edges, selectedNodeId, onSelectNode }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -22,14 +25,18 @@ export function PeopleGraph({ nodes, edges }: Props) {
     }
     const graph = new Graph({ type: "undirected", multi: false });
     for (const [index, node] of nodes.entries()) {
+      const fallback = fallbackPosition(index, nodes.length);
+      const showLabel = node.centrality >= highCentralityThreshold(nodes);
       graph.addNode(node.id, {
-        label: node.label,
-        x: node.x ?? Math.cos(index),
-        y: node.y ?? Math.sin(index),
-        size: 4 + node.centrality * 8,
+        label: showLabel ? node.label : "",
+        x: node.x ?? fallback.x,
+        y: node.y ?? fallback.y,
+        size: 5 + node.centrality * 14,
         color: colorFor(node.community),
         nodeType: node.node_type,
-        community: node.community
+        community: node.community,
+        centrality: node.centrality,
+        sourceNodeId: node.id
       });
     }
     for (const edge of edges) {
@@ -38,8 +45,8 @@ export function PeopleGraph({ nodes, edges }: Props) {
       }
       graph.mergeEdgeWithKey(edge.id, edge.source, edge.target, {
         label: edge.edge_type,
-        size: Math.max(edge.weight * 2, 1),
-        color: "#65727a"
+        size: Math.max(edge.weight * 1.6, 0.8),
+        color: "rgba(43,58,77,.72)"
       });
     }
     if (graph.order > 0 && graph.size > 0) {
@@ -49,19 +56,23 @@ export function PeopleGraph({ nodes, edges }: Props) {
         const centrality = graph.degree(node) / maxDegree;
         const community = Number(graph.getNodeAttribute(node, "community") ?? 0);
         graph.mergeNodeAttributes(node, {
-          size: 4 + centrality * 10,
+          size: Math.max(Number(graph.getNodeAttribute(node, "size") ?? 5), 5 + centrality * 11),
           color: colorFor(community)
         });
       });
     }
     const renderer = new Sigma(graph, containerRef.current, {
       allowInvalidContainer: true,
-      defaultEdgeColor: "#65727a",
-      defaultNodeColor: "#2bd4a7",
-      labelColor: { color: "#f5f0e8" },
+      defaultEdgeColor: "rgba(43,58,77,.72)",
+      defaultNodeColor: entity.people,
+      labelColor: { color: text.primary },
       labelDensity: 0.08,
-      labelRenderedSizeThreshold: 9,
+      labelRenderedSizeThreshold: 10,
       renderEdgeLabels: false
+    });
+    renderer.on("clickNode", (event) => {
+      const nodeId = String(graph.getNodeAttribute(event.node, "sourceNodeId") ?? event.node);
+      onSelectNode(nodeId);
     });
     const layout = graph.size > 0 ? new FA2Layout(graph, { settings: { gravity: 1 } }) : null;
     layout?.start();
@@ -72,25 +83,55 @@ export function PeopleGraph({ nodes, edges }: Props) {
       renderer.kill();
       graph.clear();
     };
-  }, [nodes, edges]);
+  }, [nodes, edges, onSelectNode]);
 
   return (
-    <section className="sideSection" aria-label="People graph">
-      <div className="sectionHeader">
-        <h2>Graph</h2>
-        <span>{nodes.length}/{edges.length}</span>
-      </div>
-      <div className="graphCanvas" ref={containerRef}>
+    <section className="wr-people-graph" aria-label="People graph">
+      <div className="wr-people-graph-canvas" ref={containerRef}>
         {nodes.length === 0 ? (
           <p className="emptyInline">
             <Network size={14} /> Run the M3 graph job.
           </p>
         ) : null}
       </div>
+      <div className="wr-people-title">
+        <h1>Relationship Graph</h1>
+        <span>public professional data only / Louvain communities / centrality sizing</span>
+      </div>
+      <div className="wr-community-legend">
+        <strong>COMMUNITIES</strong>
+        <div>
+          <span>
+            <i style={{ background: entity.operator }} /> operators
+          </span>
+          <span>
+            <i style={{ background: entity.people }} /> people
+          </span>
+          <span>
+            <i style={{ background: entity.opportunity }} /> press
+          </span>
+          <span>
+            <i style={{ background: entity.signal }} /> civic / regulatory
+          </span>
+        </div>
+        <p>node size = centrality / public professional data only / no patient, clinical, social or LinkedIn</p>
+      </div>
+      {selectedNodeId ? <div className="wr-graph-selection" aria-hidden /> : null}
     </section>
   );
 }
 
 function colorFor(community: number): string {
   return COMMUNITY_COLORS[Math.abs(community) % COMMUNITY_COLORS.length];
+}
+
+function fallbackPosition(index: number, count: number): { x: number; y: number } {
+  const angle = (index / Math.max(count, 1)) * Math.PI * 2;
+  const radius = 1 + (index % 5) * 0.08;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
+function highCentralityThreshold(nodes: GraphNode[]): number {
+  const sorted = nodes.map((node) => node.centrality).sort((a, b) => b - a);
+  return sorted[Math.min(6, sorted.length - 1)] ?? 0.35;
 }
