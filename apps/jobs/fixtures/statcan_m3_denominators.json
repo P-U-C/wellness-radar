@@ -1,0 +1,121 @@
+{
+  "source_name": "statcan_wds",
+  "fixture_recorded_at": "2026-06-18T00:00:00Z",
+  "fixture_note": "Recorded M3 fixture shaped from Statistics Canada WDS/Census Profile denominator outputs. Table/vector selection and attribution remain needs_review before production.",
+  "source_refs": [
+    {
+      "source_name": "statcan_wds",
+      "url": "https://www.statcan.gc.ca/en/developers/wds",
+      "trust_tier": "official",
+      "seen_at": "2026-06-18T00:00:00Z",
+      "source_record_id": "wds",
+      "licence": "Statistics Canada terms"
+    },
+    {
+      "source_name": "statcan_census_profile",
+      "url": "https://www12.statcan.gc.ca/wds-sdw/2021profile-profil2021-eng.cfm",
+      "trust_tier": "official",
+      "seen_at": "2026-06-18T00:00:00Z",
+      "source_record_id": "2021-profile",
+      "licence": "Statistics Canada terms"
+    }
+  ],
+  "records": [
+    {
+      "geo_code": "933",
+      "geo_level": "CMA",
+      "geo_name": "Vancouver CMA",
+      "parent_geo_code": "59",
+      "lat": 49.255,
+      "lng": -123.02,
+      "bc_gate_text": "Vancouver CMA 933, British Columbia",
+      "denominators": [
+        {"metric": "population", "value": 2642825, "unit": "persons", "reference_period": "2021", "confidence_score": 0.96},
+        {"metric": "business_count", "category": "recovery_contrast_therapy", "naics_code": "812190", "value": 910, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.82},
+        {"metric": "business_count", "category": "fitness_movement", "naics_code": "713940", "value": 680, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.82},
+        {"metric": "business_count", "category": "allied_health", "naics_code": "621340", "value": 1320, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.82},
+        {"metric": "business_count", "category": "spa_thermal", "naics_code": "812190", "value": 520, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.78}
+      ]
+    },
+    {
+      "geo_code": "5915022",
+      "geo_level": "CSD",
+      "geo_name": "Vancouver",
+      "parent_geo_code": "933",
+      "lat": 49.2827,
+      "lng": -123.1207,
+      "bc_gate_text": "Vancouver, BC",
+      "denominators": [
+        {"metric": "population", "value": 662248, "unit": "persons", "reference_period": "2021", "confidence_score": 0.96},
+        {"metric": "business_count", "category": "recovery_contrast_therapy", "naics_code": "812190", "value": 260, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.82},
+        {"metric": "business_count", "category": "fitness_movement", "naics_code": "713940", "value": 185, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.82},
+        {"metric": "business_count", "category": "allied_health", "naics_code": "621340", "value": 430, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.82},
+        {"metric": "business_count", "category": "spa_thermal", "naics_code": "812190", "value": 170, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.78}
+      ]
+    },
+    {
+      "geo_code": "5915025",
+      "geo_level": "CSD",
+      "geo_name": "Burnaby",
+      "parent_geo_code": "933",
+      "lat": 49.2488,
+      "lng": -122.9805,
+      "bc_gate_text": "Burnaby, BC",
+      "denominators": [
+        {"metric": "population", "value": 249125, "unit": "persons", "reference_period": "2021", "confidence_score": 0.96},
+        {"metric": "business_count", "category": "recovery_contrast_therapy", "naics_code": "812190", "value": 74, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "fitness_movement", "naics_code": "713940", "value": 72, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "allied_health", "naics_code": "621340", "value": 122, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "spa_thermal", "naics_code": "812190", "value": 48, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.76}
+      ]
+    },
+    {
+      "geo_code": "5915015",
+      "geo_level": "CSD",
+      "geo_name": "Richmond",
+      "parent_geo_code": "933",
+      "lat": 49.1666,
+      "lng": -123.1336,
+      "bc_gate_text": "Richmond, BC",
+      "denominators": [
+        {"metric": "population", "value": 209937, "unit": "persons", "reference_period": "2021", "confidence_score": 0.96},
+        {"metric": "business_count", "category": "recovery_contrast_therapy", "naics_code": "812190", "value": 60, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "fitness_movement", "naics_code": "713940", "value": 58, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "allied_health", "naics_code": "621340", "value": 118, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "spa_thermal", "naics_code": "812190", "value": 54, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.76}
+      ]
+    },
+    {
+      "geo_code": "5915004",
+      "geo_level": "CSD",
+      "geo_name": "Surrey",
+      "parent_geo_code": "933",
+      "lat": 49.1913,
+      "lng": -122.849,
+      "bc_gate_text": "Surrey, BC",
+      "denominators": [
+        {"metric": "population", "value": 568322, "unit": "persons", "reference_period": "2021", "confidence_score": 0.96},
+        {"metric": "business_count", "category": "recovery_contrast_therapy", "naics_code": "812190", "value": 132, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "fitness_movement", "naics_code": "713940", "value": 126, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "allied_health", "naics_code": "621340", "value": 254, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.8},
+        {"metric": "business_count", "category": "spa_thermal", "naics_code": "812190", "value": 72, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.76}
+      ]
+    },
+    {
+      "geo_code": "5915051",
+      "geo_level": "CSD",
+      "geo_name": "North Vancouver",
+      "parent_geo_code": "933",
+      "lat": 49.3200,
+      "lng": -123.0730,
+      "bc_gate_text": "North Vancouver, BC",
+      "denominators": [
+        {"metric": "population", "value": 58120, "unit": "persons", "reference_period": "2021", "confidence_score": 0.95},
+        {"metric": "business_count", "category": "recovery_contrast_therapy", "naics_code": "812190", "value": 38, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.78},
+        {"metric": "business_count", "category": "fitness_movement", "naics_code": "713940", "value": 31, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.78},
+        {"metric": "business_count", "category": "allied_health", "naics_code": "621340", "value": 72, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.78},
+        {"metric": "business_count", "category": "spa_thermal", "naics_code": "812190", "value": 21, "unit": "business locations", "reference_period": "2025", "confidence_score": 0.74}
+      ]
+    }
+  ]
+}

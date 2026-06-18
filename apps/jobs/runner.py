@@ -11,6 +11,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from apps.api.app.config import settings
+from apps.api.app.services.audit import write_audit_log
 from apps.jobs.adapters.city_vancouver_licences import CityVancouverBusinessLicencesAdapter
 from apps.jobs.adapters.manual_seed import ManualRecoverySeedAdapter
 from apps.jobs.adapters.orgbook_bc import OrgBookBCEnrichmentAdapter
@@ -105,6 +106,7 @@ class OperatorSnapshot:
 class DatabaseRepository:
     def __init__(self, database_url: str | None = None) -> None:
         self.conn = psycopg.connect(database_url or settings.database_url, row_factory=dict_row)
+        self._current_source_run_id: int | None = None
 
     def execute(self, query: str, params: tuple[Any, ...] | None = None) -> Any:
         return self.conn.execute(query, params)
@@ -123,10 +125,8 @@ class DatabaseRepository:
         ).fetchone()
         if not row:
             raise RuntimeError(f"source_registry row missing for {source_name}")
-        if not row["rights_notes"] or "needs_review" not in row["rights_notes"]:
-            raise RuntimeError(
-                f"source_registry rights_notes missing needs_review for {source_name}"
-            )
+        if not row["rights_notes"] or not str(row["rights_notes"]).strip():
+            raise RuntimeError(f"source_registry rights_notes missing for {source_name}")
 
     def create_source_run(self, source_name: str) -> int:
         row = self.conn.execute(
@@ -139,8 +139,14 @@ class DatabaseRepository:
         ).fetchone()
         if row is None:
             raise RuntimeError("source_run insert did not return an id")
+        self._current_source_run_id = int(row["id"])
+        self.audit(
+            action="adapter_run_started",
+            source_name=source_name,
+            source_run_id=self._current_source_run_id,
+        )
         self.conn.commit()
-        return int(row["id"])
+        return self._current_source_run_id
 
     def complete_source_run(
         self,
@@ -175,6 +181,18 @@ class DatabaseRepository:
                 error_message,
                 run_id,
             ),
+        )
+        self.audit(
+            action="adapter_run_completed",
+            source_run_id=run_id,
+            metadata={
+                "status": status,
+                "records_fetched": records_fetched,
+                "records_persisted": records_persisted,
+                "records_rejected": records_rejected,
+                "error_count": error_count,
+                "error_message": error_message,
+            },
         )
         self.conn.commit()
 
@@ -214,6 +232,13 @@ class DatabaseRepository:
                 raw_payload_id,
                 Jsonb(record.raw),
             ),
+        )
+        self.audit(
+            action="record_rejected",
+            source_name=record.source_name,
+            source_run_id=self._current_source_run_id,
+            reject_reason=result.reason or "bc_gate rejected record",
+            metadata={"title": record.title, "confidence": result.confidence},
         )
 
     def upsert_operator(self, operator: CanonicalOperator) -> None:
@@ -365,6 +390,15 @@ class DatabaseRepository:
                 Jsonb(event.payload),
             ),
         )
+        self.audit(
+            action="source_event_upserted",
+            source_name=event.source_name,
+            source_run_id=self._current_source_run_id,
+            entity_type=event.entity_type,
+            entity_id=event.entity_id,
+            source_event_id=event.id,
+            metadata={"event_type": event.event_type},
+        )
 
     def upsert_signal(self, signal: SignalRecord) -> None:
         self.conn.execute(
@@ -490,6 +524,16 @@ class DatabaseRepository:
                 Jsonb(signal.source_refs),
                 signal.confidence_score,
             ),
+        )
+        self.audit(
+            action="signal_upserted",
+            source_name=signal.source_name,
+            source_run_id=self._current_source_run_id,
+            entity_type="operator" if signal.related_operator_id else None,
+            entity_id=signal.related_operator_id,
+            signal_id=signal.id,
+            prompt_version=signal.prompt_version,
+            metadata={"type": signal.type, "severity": signal.severity},
         )
 
     def find_operator_id(self, operator: CanonicalOperator) -> str | None:
@@ -699,6 +743,46 @@ class DatabaseRepository:
                 signal_id,
             ),
         )
+        self.audit(
+            action="ai_signal_enriched",
+            signal_id=signal_id,
+            prompt_version=enrichment.prompt_version,
+            metadata={
+                "model": enrichment.model_name,
+                "generated_fields": enrichment.generated_fields,
+                "confidence": enrichment.confidence,
+            },
+        )
+
+    def audit(
+        self,
+        *,
+        action: str,
+        source_name: str | None = None,
+        source_run_id: int | None = None,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        source_event_id: str | None = None,
+        signal_id: str | None = None,
+        reject_reason: str | None = None,
+        prompt_version: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        write_audit_log(
+            self.conn,
+            action=action,
+            actor_role="system",
+            actor_id="jobs-runner",
+            source_name=source_name,
+            source_run_id=source_run_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            source_event_id=source_event_id,
+            signal_id=signal_id,
+            reject_reason=reject_reason,
+            prompt_version=prompt_version,
+            metadata=metadata,
+        )
 
     def close(self) -> None:
         self.conn.commit()
@@ -715,6 +799,7 @@ class InMemoryRepository:
         self.signals: dict[str, SignalRecord] = {}
         self.rejected: list[tuple[CanonicalGeoRecord, GeoGateResult, str]] = []
         self.source_runs: dict[int, dict[str, Any]] = {}
+        self.audit_logs: list[dict[str, Any]] = []
         self._run_id = 0
 
     def execute(self, query: str, params: tuple[Any, ...] | None = None) -> Any:
@@ -737,6 +822,13 @@ class InMemoryRepository:
     def create_source_run(self, source_name: str) -> int:
         self._run_id += 1
         self.source_runs[self._run_id] = {"source_name": source_name, "status": "partial"}
+        self.audit_logs.append(
+            {
+                "action": "adapter_run_started",
+                "source_name": source_name,
+                "source_run_id": self._run_id,
+            }
+        )
         return self._run_id
 
     def complete_source_run(
@@ -760,6 +852,13 @@ class InMemoryRepository:
                 "error_message": error_message,
             }
         )
+        self.audit_logs.append(
+            {
+                "action": "adapter_run_completed",
+                "source_run_id": run_id,
+                "status": status,
+            }
+        )
 
     def upsert_raw_payload(
         self, source_name: str, source_record_id: str, raw: dict[str, Any]
@@ -776,6 +875,13 @@ class InMemoryRepository:
         raw_payload_id: str,
     ) -> None:
         self.rejected.append((record, result, raw_payload_id))
+        self.audit_logs.append(
+            {
+                "action": "record_rejected",
+                "source_name": record.source_name,
+                "reject_reason": result.reason,
+            }
+        )
 
     def upsert_operator(self, operator: CanonicalOperator) -> None:
         self.operators[operator.id] = operator
@@ -788,9 +894,11 @@ class InMemoryRepository:
 
     def upsert_source_event(self, event: SourceEventRecord) -> None:
         self.source_events[event.id] = event
+        self.audit_logs.append({"action": "source_event_upserted", "source_event_id": event.id})
 
     def upsert_signal(self, signal: SignalRecord) -> None:
         self.signals[signal.id] = signal
+        self.audit_logs.append({"action": "signal_upserted", "signal_id": signal.id})
 
     def list_operator_snapshots(self, limit: int = 250) -> list[OperatorSnapshot]:
         snapshots = [
@@ -859,6 +967,13 @@ class InMemoryRepository:
         signal.ai_generated_fields = enrichment.generated_fields
         signal.prompt_version = enrichment.prompt_version
         signal.ai_model = enrichment.model_name
+        self.audit_logs.append(
+            {
+                "action": "ai_signal_enriched",
+                "signal_id": signal_id,
+                "prompt_version": enrichment.prompt_version,
+            }
+        )
 
     def close(self) -> None:
         return None
@@ -1233,7 +1348,14 @@ def main() -> None:
             "orgbook_bc",
             "manual_people_csv",
             "ai_enrichment",
+            "entity_resolution",
+            "statcan_denominators",
+            "opportunity_analytics",
+            "peer_city_trends",
+            "influence_scoring",
+            "people_graph",
             "m2",
+            "m3",
         ],
     )
     parser.add_argument("--limit", type=int, default=100)
@@ -1255,8 +1377,41 @@ def main() -> None:
     if args.adapter == "ai_enrichment":
         print({"enriched": run_ai_enrichment(limit=args.limit)})
         return
+    if args.adapter == "entity_resolution":
+        from apps.jobs.analytics.entity_resolution import run_entity_resolution
+
+        print(_metrics_dict(run_entity_resolution()))
+        return
+    if args.adapter == "statcan_denominators":
+        from apps.jobs.analytics.denominators import run_statcan_denominators
+
+        print(_metrics_dict(run_statcan_denominators()))
+        return
+    if args.adapter == "opportunity_analytics":
+        from apps.jobs.analytics.opportunity import run_opportunity_analytics
+
+        print(_metrics_dict(run_opportunity_analytics()))
+        return
+    if args.adapter == "peer_city_trends":
+        from apps.jobs.analytics.trends import run_peer_city_trends
+
+        print(_metrics_dict(run_peer_city_trends()))
+        return
+    if args.adapter == "people_graph":
+        from apps.jobs.analytics.graph import run_graph_build
+
+        print(_metrics_dict(run_graph_build()))
+        return
+    if args.adapter == "influence_scoring":
+        from apps.jobs.analytics.influence import run_influence_scoring
+
+        print(_metrics_dict(run_influence_scoring()))
+        return
     if args.adapter == "m2":
         print(run_m2_sequence(limit=args.limit, people_csv=args.people_csv))
+        return
+    if args.adapter == "m3":
+        print(run_m3_sequence())
         return
 
     metrics = run_adapter(adapter_for_name(args.adapter, args.limit))
@@ -1293,6 +1448,24 @@ def run_m2_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[st
         lambda: import_people_csv(DatabaseRepository(), path=people_csv)
     )
     results["ai_enrichment"] = _run_safely(lambda: run_ai_enrichment(limit=limit))
+    return results
+
+
+def run_m3_sequence() -> dict[str, Any]:
+    from apps.jobs.analytics.denominators import run_statcan_denominators
+    from apps.jobs.analytics.entity_resolution import run_entity_resolution
+    from apps.jobs.analytics.graph import run_graph_build
+    from apps.jobs.analytics.influence import run_influence_scoring
+    from apps.jobs.analytics.opportunity import run_opportunity_analytics
+    from apps.jobs.analytics.trends import run_peer_city_trends
+
+    results: dict[str, Any] = {}
+    results["entity_resolution"] = _run_safely(run_entity_resolution)
+    results["statcan_denominators"] = _run_safely(run_statcan_denominators)
+    results["opportunity_analytics"] = _run_safely(run_opportunity_analytics)
+    results["peer_city_trends"] = _run_safely(run_peer_city_trends)
+    results["people_graph"] = _run_safely(run_graph_build)
+    results["influence_scoring"] = _run_safely(run_influence_scoring)
     return results
 
 

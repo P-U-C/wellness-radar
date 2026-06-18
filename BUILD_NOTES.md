@@ -196,3 +196,269 @@ Results:
 - Opportunity heatmap, category velocity, peer-city trends, Sigma.js graph, and influence score explainability.
 - Source-rights/legal review for production attribution and republication policy.
 - Per-source/outlet scheduling, retries, and alerting instead of one-shot startup jobs.
+
+## M3
+
+Date: 2026-06-18 UTC
+
+### Completed Against Exit Checklist
+
+- Entity resolution added with `entity_resolution_match` and `entity_alias`. Matches use deterministic rules over normalized names, OrgBook/registry IDs, municipality, and `pg_trgm` similarity. Merges are logical aliases only, with confidence, provenance, review status, and reversible state.
+- Category enum is frozen in `category_taxonomy` and enforced on `operator.categories`. Draft NAICS mappings are seeded in `naics_category_crosswalk` and documented in `docs/analytics/category_naics_crosswalk.md` as `needs-human-review`.
+- StatCan denominator adapter added as `statcan_wds`. It stores CMA/CSD geography and population/business-count denominators from a recorded fixture, records raw payloads/source runs, writes source refs, and runs `bc_gate` before geography persist.
+- White-space heatmap and opportunity scorecards added with full component breakdown, source refs, source confidence, trace payloads, and a caveat that scores are supply-demand signals, not guaranteed economic attractiveness.
+- Category velocity analytics added for 30/90/180 day windows: new operators, jobs, events, and news/signal velocity.
+- Peer-city trend provider interface added with deterministic fixture fallback for Vancouver, Toronto, Seattle, Austin, and Melbourne wedge terms. API/UI clearly mark these rows as stub-backed.
+- Influence scoring added with the s.11.3 components, locality multiplier, recency decay, source confidence, persisted breakdowns, and “why this person appears” explanations. Public professional seed data remains the only people input.
+- Sigma.js people graph added with graphology, ForceAtlas2 worker layout, Louvain communities, and centrality sizing. Graph nodes cover people, orgs, operators, and events; edges include employee/speaker/mentioned-with style public relationships.
+- M3 API endpoints added: `/analytics/whitespace`, `/analytics/opportunity-scorecards`, `/analytics/category-velocity`, `/analytics/methodology`, `/trends`, and `/people-graph`.
+- Web dashboard now renders opportunity scorecards, velocity, peer-city trend tiles, influence breakdowns, Sigma graph, and a white-space map overlay.
+- Compose jobs now run `m2` then `m3` on startup.
+
+### How To Run / Verify
+
+```bash
+sudo -n docker compose up --build -d
+curl -s http://127.0.0.1:8000/health
+curl -s 'http://127.0.0.1:8000/analytics/whitespace?category=recovery_contrast_therapy&limit=1'
+curl -s 'http://127.0.0.1:8000/analytics/opportunity-scorecards?category=recovery_contrast_therapy&limit=1'
+curl -s 'http://127.0.0.1:8000/analytics/category-velocity?category=recovery_contrast_therapy'
+curl -s 'http://127.0.0.1:8000/trends?term=cold%20plunge'
+curl -s 'http://127.0.0.1:8000/people?sort=influence&limit=1'
+curl -s 'http://127.0.0.1:8000/people-graph'
+```
+
+Open the web app at `http://localhost:5173`.
+
+### Verified Commands
+
+```bash
+python3 -m pytest
+python3 -m ruff check .
+python3 -m mypy apps packages db
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+sudo -n docker compose down -v --remove-orphans
+sudo -n docker compose up -d db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m apps.jobs.runner m2 --limit 20
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m apps.jobs.runner m3
+sudo -n docker compose up --build -d
+```
+
+Results:
+
+- Python tests: 40 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web lint/typecheck: passed.
+- Web unit tests: 3 passed.
+- Web build: passed with the existing Vite large chunk warning, now larger because Sigma/graphology are bundled.
+- Clean DB migrations applied: `001`, `002`, `003`, `004`.
+- Clean M2 run with `--limit 20` succeeded across City, manual seed, OSM, RSS, official feeds, OrgBook, people import, and AI enrichment.
+- Clean M3 run succeeded:
+  - Entity resolution: 0 fetched/persisted on the clean sample because existing exact-name/OrgBook dedupe left no unresolved duplicate pairs.
+  - StatCan denominators: 6 fetched, 30 persisted, 0 rejected.
+  - Opportunity analytics: 20 fetched, 32 persisted.
+  - Peer-city trends: 30 fetched, 30 persisted.
+  - People graph: 76 fetched, 97 persisted in the clean sample run; full Compose run produced 227 nodes and 78 edges after the larger M2 startup.
+  - Influence scoring: 6 fetched, 6 persisted.
+- Full Compose startup returned API health `{"status":"ok"}` and web root HTTP 200.
+- Endpoint smoke checks confirmed opportunity rows include component breakdown/source confidence/source refs; trends return `is_stub: true`; people return influence components and explanation.
+
+### Stubbed / Needs Review
+
+- Peer-city trend tiles are intentionally stub-backed by `peer_city_trends_fixture` because no reviewed Google Trends API/key is available. They must not be presented as live Google Trends data.
+- StatCan denominator data uses a recorded M3 fixture shaped for the WDS/Census Profile flow. Production table/vector selection, attribution text, and caching policy remain `needs_review`.
+- NAICS crosswalk is drafted and flagged `needs-human-review`; no sign-off is claimed.
+- The `transit_access` score component is a centroid-to-core accessibility proxy for M3, not a true transit model.
+- Entity resolution has working deterministic merge/candidate logic, but the clean verification dataset produced no new unresolved matches.
+
+### M4 Pickup
+
+- Replace trend fixture fallback with a reviewed live provider or keep a clearly labelled non-live mode.
+- Replace CSD centroid proxy with reviewed neighborhood polygons and transit-access data.
+- Add correction/request-update workflow for people records before public launch.
+- Add RBAC/audit/export/subscription production hardening from Milestone 4.
+- Add CRE inputs only after source-rights review.
+
+## M4
+
+Date: 2026-06-18 UTC
+
+### Completed Against Exit Checklist
+
+- RBAC added for API protected surfaces:
+  - `viewer`, `analyst`, and `admin` roles are token-backed.
+  - Public read endpoints remain open.
+  - `/admin/*` read endpoints require analyst/admin permission.
+  - admin-only writes such as snapshot creation and alert dispatch stubs require admin permission.
+  - Tests cover missing token, insufficient role, analyst read, analyst write denial, and admin write allow.
+- Audit logging added:
+  - `audit_log` stores structured admin/system events with request ID, source name, source run ID, entity/source-event/signal IDs, reject reason, prompt version, actor role, and metadata.
+  - Adapter starts/completions, record rejections, source-event/signal upserts, AI enrichment, alert subscription writes, dispatch stubs, snapshots, and people correction requests are audited.
+- Alert subscriptions added:
+  - `alert_subscription` stores owner email, categories, geography JSON, enabled alert conditions, channel, and target.
+  - `/admin/alerts/evaluate` evaluates all s.15.3 alert conditions.
+  - `/admin/alerts/dispatch-stub` writes stub dispatch rows to `alert_dispatch`.
+- Export and snapshots added:
+  - `/admin/exports/{operators|signals|graph}?format={json|csv}` exports source-backed records with provenance/freshness.
+  - `/admin/snapshots` creates/list export snapshots in `export_snapshot`.
+- Kiosk / TV mode added:
+  - `/?mode=kiosk` renders a fullscreen map with ambient live feed overlay.
+  - Main dashboard links to kiosk mode.
+- Observability added:
+  - Structured JSON API request logs include request ID, method/path, status, latency, and role when available.
+  - `/metrics` exposes Prometheus-style aggregate metrics.
+  - `/admin/observability` exposes API latency/error, map query latency, adapter success/failure, records fetched/persisted/rejected, source freshness age, AI cost/error counters, WA contamination rejects, geocoding hit rate, fuzzy-match confidence buckets, and alert status.
+- Governance/UI hardening added:
+  - Operators, signals, people scoring, map pin inspection, entity drawer, and opportunity scorecards expose provenance and freshness age.
+  - People scoring correction workflow added with `people_correction_request`, `POST /people/{person_id}/correction-requests`, audit logging, and governance docs.
+  - Source-rights matrix documented in `docs/governance/source_rights_matrix.md`; official open-government sources were resolved where current official licences were clear, while unresolved sources remain honestly marked `needs_review`.
+- Deployment and workflow hardening added:
+  - Runbooks added for local, dev, staging, production, and incidents.
+  - `.env.example` contains placeholder-only secret/config names.
+  - CI explicitly runs web checks, Python lint/typecheck, geo tests, adapter fixture tests, full pytest, and migration check.
+  - `infra/github/workflows/ci.yml` mirrors the active `.github/workflows/ci.yml`.
+  - CODEOWNERS covers protected paths including workflow files.
+  - PR template added per `CLAUDE.md`.
+- M3 idempotency hardening:
+  - Entity-resolution candidates are deduped by active duplicate before insert, fixing a duplicate-key issue found during M4 Compose verification.
+
+### How To Run / Verify
+
+```bash
+sudo -n docker compose up --build -d
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/metrics
+curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/admin/me
+curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/admin/observability
+curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/admin/alerts/evaluate
+curl -s -H 'Authorization: Bearer local-analyst-token' 'http://127.0.0.1:8000/admin/exports/operators?format=csv'
+curl -s -H 'Authorization: Bearer local-admin-token' \
+  -H 'Content-Type: application/json' \
+  -d '{"snapshot_type":"operators","format":"json"}' \
+  http://127.0.0.1:8000/admin/snapshots
+```
+
+Open:
+
+- Web dashboard: `http://localhost:5173`
+- Kiosk mode: `http://localhost:5173?mode=kiosk`
+
+### Verified Commands
+
+```bash
+python3 -m pytest -q
+python3 -m ruff check .
+python3 -m mypy apps packages db
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+sudo -n docker compose down -v --remove-orphans
+sudo -n docker compose up -d db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m db.migrate
+sudo -n docker compose up --build -d
+```
+
+Results:
+
+- Python tests: 44 passed.
+- Web unit tests: 3 passed.
+- Total tests: 47 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web lint/typecheck/build: passed; Vite still reports the existing large chunk warning from map/graph dependencies.
+- Clean PostGIS migrations applied: `001`, `002`, `003`, `004`, `005`.
+- Compose rebuilt and started API/jobs/web/db.
+- API health returned `{"status":"ok"}`.
+- Web dashboard and kiosk route returned HTTP 200.
+- RBAC smoke:
+  - unauthenticated `GET /admin/me`: HTTP 401;
+  - analyst token `GET /admin/me`: HTTP 200;
+  - analyst token `POST /admin/snapshots`: HTTP 403;
+  - admin token `POST /admin/snapshots`: created a ready snapshot.
+- Compose startup job results after rebuild:
+  - City licences: 75 fetched, 72 persisted.
+  - Manual seed: 12 fetched, 12 persisted.
+  - OSM Overpass: 75 fetched, 68 persisted.
+  - Local RSS: 75 fetched, 5 persisted.
+  - BC Gov Health RSS: 10 fetched, 10 persisted.
+  - Health Canada recalls: 3 fetched, 3 persisted.
+  - OrgBook BC: 75 fetched, 75 persisted.
+  - Manual people CSV: 6 fetched, 6 persisted.
+  - AI enrichment: 75 enriched per startup run.
+  - Entity resolution: 0 fetched/persisted on the final rebuilt run because active matches already existed; no errors.
+  - StatCan denominators: 6 fetched, 30 persisted.
+  - Opportunity analytics: 20 fetched, 32 persisted.
+  - Peer-city trends: 30 fetched, 30 persisted.
+  - People graph: 226 fetched, 303 persisted.
+  - Influence scoring: 6 fetched, 6 persisted.
+- `/admin/observability` reported 0 API errors, all latest enabled source freshness ages within SLA, 0 WA contamination rejects, geocoding hit rate `0.9122`, and fuzzy-match bucket count with high-confidence matches present.
+
+### Stubbed / Needs Review
+
+- Alert dispatch is intentionally a stub that writes `alert_dispatch` rows; external email/webhook/PagerDuty delivery is not configured.
+- `peer_city_trends_fixture` remains stub-backed and must not be presented as live Google Trends.
+- CRE adapter spike remains unimplemented because the backlog row is `needs-human-review`; no unreviewed CRE source was added.
+- Enabled sources still requiring human source-rights review before public launch: `manual_seed`, `manual_people_csv`, `osm_overpass`, `orgbook_bc`, `local_rss`, and `peer_city_trends_fixture`.
+- Disabled backlog sources still requiring review before enablement: `clinicaltrials_gov`, `gdelt_doc`, `healthlink_bc_locator`, `vch_fraser_health_pages`, and `workbc_job_bank`.
+- Production deployment secrets, real external alert delivery, and public people-correction ownership/SLA must be configured outside the repository before public launch.
+- APScheduler remains an idle placeholder from earlier milestones; the Compose jobs service still runs startup sequences and idles.
+
+## Final Status
+
+### Production Gate
+
+- Freshness monitor live: met. `/admin/source-freshness` and `/admin/observability` report source age/SLA status.
+- Adapter failure alerts live: met for evaluation and in-app/stub dispatch. External notification delivery remains a production integration.
+- RBAC in place: met. Protected admin/write endpoints require role tokens.
+- Source-rights registry complete: matrix is complete and reviewed where possible; public production is blocked for sources still marked `needs_review`.
+- Public people scoring correction workflow: met at API/schema/audit/docs level; human owner and response SLA remain required before public launch.
+- Export/snapshot working: met for operators, signals, and graph in CSV/JSON plus persisted snapshots.
+
+### M0-M4 Checklist
+
+- M0 Repo harness: done.
+- M1 BC-only vertical slice: done.
+- M2 MVP private alpha: done.
+- M3 Intelligence beta: done, with fixture-backed peer-city trends clearly labelled.
+- M4 Production hardening: done for build scope, with honest production/human-review gaps listed above.
+
+### Run The Whole System
+
+```bash
+sudo -n docker compose up --build -d
+```
+
+Then open:
+
+- `http://localhost:5173`
+- `http://localhost:5173?mode=kiosk`
+- `http://localhost:8000/health`
+- `http://localhost:8000/metrics`
+
+Protected local admin examples:
+
+```bash
+curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/admin/observability
+curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/admin/alerts/evaluate
+```
+
+### Final Test Count
+
+- Python: 44 passing.
+- Web: 3 passing.
+- Total: 47 passing.
+
+### Remaining Gaps Before Public Production
+
+- Complete human legal/source-rights review for all remaining `needs_review` sources, especially enabled manual, OSM, OrgBook, RSS, and fixture trend sources.
+- Replace fixture peer-city trends with a reviewed provider or keep the non-live label permanently.
+- Add reviewed CRE inputs only after source rights and field allowlists are approved.
+- Configure real deployment secrets, external alert dispatch, monitoring sinks, and incident ownership outside the repo.
+- Assign a public correction workflow owner and SLA before exposing people scoring publicly.
+- Replace the idle scheduler placeholder with real scheduled jobs or an external orchestrator.

@@ -1,5 +1,5 @@
 import type { FeatureCollection, Point } from "geojson";
-import type { Operator } from "./api";
+import type { Operator, OpportunityHeatmapCell } from "./api";
 
 export const BC_BBOX = {
   minLng: -123.3,
@@ -22,7 +22,17 @@ export function isInBcBounds(lat: number | null, lng: number | null): boolean {
 
 export function operatorsToFeatureCollection(
   operators: Operator[]
-): FeatureCollection<Point, { id: string; name: string; category: string; status: string }> {
+): FeatureCollection<
+  Point,
+  {
+    id: string;
+    name: string;
+    category: string;
+    status: string;
+    source: string;
+    freshness: string;
+  }
+> {
   return {
     type: "FeatureCollection",
     features: operators
@@ -34,7 +44,32 @@ export function operatorsToFeatureCollection(
           id: operator.id,
           name: operator.name,
           category: operator.categories[0] ?? "allied_health",
-          status: operator.status
+          status: operator.status,
+          source: operator.source_refs[0]?.source_name ?? "unknown",
+          freshness:
+            operator.freshness_age_hours === null || operator.freshness_age_hours === undefined
+              ? "unknown"
+              : `${Math.round(operator.freshness_age_hours)}h`
+        }
+      }))
+  };
+}
+
+export function heatmapToFeatureCollection(
+  cells: OpportunityHeatmapCell[]
+): FeatureCollection<Point, { id: string; geo_name: string; score: number; supply_count: number }> {
+  return {
+    type: "FeatureCollection",
+    features: cells
+      .filter((cell) => isInBcBounds(cell.lat, cell.lng))
+      .map((cell) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [cell.lng as number, cell.lat as number] },
+        properties: {
+          id: cell.id,
+          geo_name: cell.geo_name,
+          score: cell.opportunity_score,
+          supply_count: cell.supply_count
         }
       }))
   };

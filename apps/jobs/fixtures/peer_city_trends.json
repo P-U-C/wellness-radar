@@ -1,0 +1,61 @@
+{
+  "source_name": "peer_city_trends_fixture",
+  "fixture_recorded_at": "2026-06-18T00:00:00Z",
+  "methodology": "Deterministic fixture fallback for peer-city trend tiles. Values are normalized 0-100 interest indices and must be replaced by a reviewed Trends provider before any claim of live search demand.",
+  "terms": ["sauna", "cold plunge", "contrast therapy", "recovery club", "social wellness", "longevity"],
+  "cities": ["Vancouver", "Toronto", "Seattle", "Austin", "Melbourne"],
+  "source_refs": [
+    {
+      "source_name": "peer_city_trends_fixture",
+      "url": null,
+      "trust_tier": "informal",
+      "seen_at": "2026-06-18T00:00:00Z",
+      "source_record_id": "m3-deterministic-fixture",
+      "licence": "internal deterministic fixture"
+    }
+  ],
+  "series": {
+    "sauna": {
+      "Vancouver": [42, 43, 45, 48, 52, 55, 58, 62, 65, 68, 72, 76],
+      "Toronto": [35, 36, 38, 39, 42, 45, 49, 52, 54, 57, 60, 63],
+      "Seattle": [39, 41, 43, 46, 49, 51, 55, 58, 61, 64, 66, 70],
+      "Austin": [28, 30, 31, 34, 37, 41, 44, 46, 50, 53, 56, 58],
+      "Melbourne": [32, 35, 37, 40, 44, 47, 50, 54, 58, 62, 65, 69]
+    },
+    "cold plunge": {
+      "Vancouver": [25, 28, 31, 35, 39, 44, 48, 54, 61, 67, 73, 80],
+      "Toronto": [18, 20, 23, 26, 31, 35, 39, 42, 48, 52, 56, 61],
+      "Seattle": [22, 25, 28, 33, 37, 42, 47, 52, 56, 60, 66, 73],
+      "Austin": [16, 18, 21, 26, 30, 36, 43, 49, 54, 60, 67, 75],
+      "Melbourne": [20, 22, 25, 29, 34, 39, 44, 49, 55, 62, 68, 74]
+    },
+    "contrast therapy": {
+      "Vancouver": [14, 16, 19, 22, 25, 30, 34, 39, 45, 51, 58, 64],
+      "Toronto": [11, 12, 15, 17, 20, 24, 28, 32, 36, 40, 45, 51],
+      "Seattle": [13, 15, 18, 21, 24, 29, 33, 38, 43, 49, 55, 62],
+      "Austin": [10, 12, 15, 19, 24, 29, 34, 40, 47, 55, 63, 71],
+      "Melbourne": [12, 14, 17, 20, 25, 30, 35, 41, 48, 56, 63, 70]
+    },
+    "recovery club": {
+      "Vancouver": [8, 9, 11, 13, 16, 20, 24, 29, 35, 42, 49, 57],
+      "Toronto": [7, 8, 9, 11, 14, 17, 21, 25, 30, 36, 42, 48],
+      "Seattle": [7, 9, 10, 13, 16, 19, 23, 28, 33, 39, 46, 53],
+      "Austin": [6, 7, 9, 12, 16, 21, 27, 34, 42, 51, 60, 68],
+      "Melbourne": [6, 8, 10, 12, 15, 19, 24, 30, 37, 45, 54, 62]
+    },
+    "social wellness": {
+      "Vancouver": [19, 20, 22, 25, 28, 31, 35, 40, 44, 48, 53, 58],
+      "Toronto": [21, 22, 24, 27, 31, 35, 39, 43, 47, 52, 56, 60],
+      "Seattle": [18, 20, 22, 25, 29, 33, 38, 42, 47, 51, 55, 59],
+      "Austin": [17, 19, 21, 25, 30, 36, 42, 48, 54, 60, 65, 70],
+      "Melbourne": [20, 22, 25, 29, 33, 38, 43, 49, 55, 61, 67, 72]
+    },
+    "longevity": {
+      "Vancouver": [30, 32, 34, 36, 39, 42, 46, 50, 54, 59, 63, 68],
+      "Toronto": [34, 35, 37, 39, 42, 46, 50, 54, 59, 63, 67, 72],
+      "Seattle": [37, 39, 41, 44, 48, 52, 57, 62, 66, 71, 76, 82],
+      "Austin": [31, 33, 36, 39, 43, 48, 54, 59, 65, 71, 77, 84],
+      "Melbourne": [29, 31, 34, 37, 41, 45, 50, 55, 61, 66, 72, 78]
+    }
+  }
+}

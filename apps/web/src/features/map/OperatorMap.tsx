@@ -1,13 +1,14 @@
 import type { Feature, Point } from "geojson";
 import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Map, { Layer, Source, type LayerProps, type MapLayerMouseEvent, type MapRef } from "react-map-gl/maplibre";
-import type { Operator } from "../../lib/api";
-import { BC_BBOX, operatorsToFeatureCollection } from "../../lib/geo";
+import type { Operator, OpportunityHeatmapCell } from "../../lib/api";
+import { BC_BBOX, heatmapToFeatureCollection, operatorsToFeatureCollection } from "../../lib/geo";
 
 type Props = {
   operators: Operator[];
+  heatmapCells: OpportunityHeatmapCell[];
   selectedOperatorId: string | null;
   onSelectOperator: (operatorId: string) => void;
 };
@@ -92,9 +93,38 @@ const selectedLayer: LayerProps = {
   }
 };
 
-export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }: Props) {
+const heatmapLayer: LayerProps = {
+  id: "whitespace-cells",
+  type: "circle",
+  paint: {
+    "circle-color": [
+      "interpolate",
+      ["linear"],
+      ["get", "score"],
+      0.2,
+      "#27415f",
+      0.45,
+      "#2bd4a7",
+      0.7,
+      "#f2c94c",
+      0.9,
+      "#ff6b6b"
+    ],
+    "circle-radius": ["interpolate", ["linear"], ["get", "score"], 0.2, 18, 0.9, 46],
+    "circle-opacity": 0.34,
+    "circle-stroke-color": "#f5f0e8",
+    "circle-stroke-opacity": 0.3,
+    "circle-stroke-width": 1
+  }
+};
+
+export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSelectOperator }: Props) {
   const mapRef = useRef<MapRef | null>(null);
+  const [hoveredOperatorId, setHoveredOperatorId] = useState<string | null>(null);
   const data = useMemo(() => operatorsToFeatureCollection(operators), [operators]);
+  const heatmapData = useMemo(() => heatmapToFeatureCollection(heatmapCells), [heatmapCells]);
+  const inspectedOperator =
+    operators.find((item) => item.id === (selectedOperatorId ?? hoveredOperatorId)) ?? null;
   const selected = useMemo(
     () =>
       ({
@@ -151,8 +181,16 @@ export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }:
         maxZoom={17}
         interactiveLayerIds={["operator-points", "operator-clusters"]}
         onClick={handleClick}
+        onMouseMove={(event) => {
+          const feature = event.features?.find((item) => item.layer.id === "operator-points");
+          setHoveredOperatorId(String(feature?.properties?.id ?? "") || null);
+        }}
+        onMouseLeave={() => setHoveredOperatorId(null)}
         attributionControl={false}
       >
+        <Source id="whitespace" type="geojson" data={heatmapData}>
+          <Layer {...heatmapLayer} />
+        </Source>
         <Source id="operators" type="geojson" data={data} cluster clusterRadius={48} clusterMaxZoom={13}>
           <Layer {...clusterLayer} />
           <Layer {...clusterCountLayer} />
@@ -165,7 +203,28 @@ export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }:
         <span><i className="legendSpa" />Spa</span>
         <span><i className="legendFitness" />Fitness</span>
         <span><i className="legendAllied" />Allied</span>
+        <span><i className="legendWhitespace" />White-space</span>
       </div>
+      {inspectedOperator ? (
+        <div className="mapInspect" aria-live="polite">
+          <strong>{inspectedOperator.name}</strong>
+          <span>{inspectedOperator.source_refs[0]?.source_name ?? "unknown source"}</span>
+          <small>{formatFreshness(inspectedOperator.freshness_age_hours)}</small>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function formatFreshness(ageHours?: number | null): string {
+  if (ageHours === null || ageHours === undefined) {
+    return "freshness unknown";
+  }
+  if (ageHours < 1) {
+    return "updated under 1h ago";
+  }
+  if (ageHours < 48) {
+    return `updated ${Math.round(ageHours)}h ago`;
+  }
+  return `updated ${Math.round(ageHours / 24)}d ago`;
 }
