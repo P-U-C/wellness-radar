@@ -1,5 +1,6 @@
 import type { FeatureCollection, Point } from "geojson";
-import type { Operator, OpportunityHeatmapCell } from "./api";
+import type { Operator, OpportunityHeatmapCell, Signal } from "./api";
+import { colorForSignalType } from "./theme";
 
 export const BC_BBOX = {
   minLng: -123.3,
@@ -70,6 +71,36 @@ export function heatmapToFeatureCollection(
           geo_name: cell.geo_name,
           score: cell.opportunity_score,
           supply_count: cell.supply_count
+        }
+      }))
+  };
+}
+
+export function signalsToFeatureCollection(
+  signals: Signal[]
+): FeatureCollection<
+  Point,
+  {
+    id: string;
+    type: string;
+    title: string;
+    color: string;
+    related_operator_id: string | null;
+  }
+> {
+  return {
+    type: "FeatureCollection",
+    features: signals
+      .filter((signal) => isInBcBounds(signal.lat, signal.lng))
+      .map((signal) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [signal.lng as number, signal.lat as number] },
+        properties: {
+          id: signal.id,
+          type: signal.type,
+          title: signal.title,
+          color: colorForSignalType(signal.type),
+          related_operator_id: signal.related_operator_id
         }
       }))
   };

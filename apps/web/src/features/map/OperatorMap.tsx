@@ -3,14 +3,38 @@ import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Map, { Layer, Source, type LayerProps, type MapLayerMouseEvent, type MapRef } from "react-map-gl/maplibre";
-import type { Operator, OpportunityHeatmapCell } from "../../lib/api";
-import { BC_BBOX, heatmapToFeatureCollection, operatorsToFeatureCollection } from "../../lib/geo";
+import type { Operator, OpportunityHeatmapCell, Signal } from "../../lib/api";
+import {
+  BC_BBOX,
+  heatmapToFeatureCollection,
+  operatorsToFeatureCollection,
+  signalsToFeatureCollection
+} from "../../lib/geo";
+import { MAGMA, mapStyle as luminousMapStyle, surfaces, text } from "../../lib/theme";
+
+export type MapLayers = {
+  operators: boolean;
+  signals: boolean;
+  people: boolean;
+  opportunity: boolean;
+};
 
 type Props = {
   operators: Operator[];
   heatmapCells: OpportunityHeatmapCell[];
+  signals?: Signal[];
   selectedOperatorId: string | null;
+  selectedSignalId?: string | null;
+  layers?: MapLayers;
   onSelectOperator: (operatorId: string) => void;
+  onSelectSignal?: (signalId: string) => void;
+};
+
+const emptyLayers: MapLayers = {
+  operators: true,
+  signals: true,
+  people: false,
+  opportunity: true
 };
 
 const darkStyle: StyleSpecification = {
@@ -20,7 +44,7 @@ const darkStyle: StyleSpecification = {
     {
       id: "background",
       type: "background",
-      paint: { "background-color": "#101214" }
+      paint: { "background-color": luminousMapStyle.land }
     }
   ]
 } as const;
@@ -30,11 +54,11 @@ const clusterLayer: LayerProps = {
   type: "circle",
   filter: ["has", "point_count"],
   paint: {
-    "circle-color": "#2bd4a7",
-    "circle-opacity": 0.82,
-    "circle-radius": ["step", ["get", "point_count"], 18, 25, 24, 80, 32],
-    "circle-stroke-color": "#f5f0e8",
-    "circle-stroke-width": 1
+    "circle-color": luminousMapStyle.pin,
+    "circle-opacity": 0.78,
+    "circle-radius": ["step", ["get", "point_count"], 15, 25, 21, 80, 29],
+    "circle-stroke-color": surfaces.bg,
+    "circle-stroke-width": 2
   }
 };
 
@@ -44,10 +68,11 @@ const clusterCountLayer: LayerProps = {
   filter: ["has", "point_count"],
   layout: {
     "text-field": ["get", "point_count_abbreviated"],
-    "text-size": 12
+    "text-font": ["Open Sans Bold"],
+    "text-size": 11
   },
   paint: {
-    "text-color": "#101214"
+    "text-color": surfaces.bg
   }
 };
 
@@ -57,27 +82,25 @@ const pointLayer: LayerProps = {
   filter: ["!", ["has", "point_count"]],
   paint: {
     "circle-color": [
-      "match",
-      ["get", "category"],
-      "recovery_contrast_therapy",
-      "#ff6b6b",
-      "spa_thermal",
-      "#f2c94c",
-      "fitness_movement",
-      "#7dd3fc",
-      "community_social_wellness",
-      "#c084fc",
-      "#2bd4a7"
-    ],
-    "circle-radius": 8,
-    "circle-opacity": 0.9,
-    "circle-stroke-width": 2,
-    "circle-stroke-color": [
       "case",
-      ["==", ["get", "status"], "closed"],
-      "#5d646b",
-      "#f5f0e8"
-    ]
+      ["in", ["downcase", ["get", "status"]], ["literal", ["new", "planned", "permit"]]],
+      surfaces.bg,
+      luminousMapStyle.pin
+    ],
+    "circle-radius": [
+      "case",
+      ["in", ["downcase", ["get", "status"]], ["literal", ["new", "planned", "permit"]]],
+      4.2,
+      luminousMapStyle.pinRadius
+    ],
+    "circle-opacity": 0.96,
+    "circle-stroke-width": [
+      "case",
+      ["in", ["downcase", ["get", "status"]], ["literal", ["new", "planned", "permit"]]],
+      1.8,
+      0
+    ],
+    "circle-stroke-color": luminousMapStyle.pin
   }
 };
 
@@ -86,10 +109,10 @@ const selectedLayer: LayerProps = {
   type: "circle",
   filter: ["==", ["get", "id"], ""],
   paint: {
-    "circle-radius": 15,
-    "circle-color": "rgba(255, 255, 255, 0)",
-    "circle-stroke-color": "#ffffff",
-    "circle-stroke-width": 3
+    "circle-radius": 14,
+    "circle-color": "rgba(255,255,255,0)",
+    "circle-stroke-color": luminousMapStyle.selectRing,
+    "circle-stroke-width": 1.5
   }
 };
 
@@ -101,31 +124,69 @@ const heatmapLayer: LayerProps = {
       "interpolate",
       ["linear"],
       ["get", "score"],
-      0.2,
-      "#27415f",
+      0,
+      MAGMA[0],
+      0.25,
+      MAGMA[1],
       0.45,
-      "#2bd4a7",
-      0.7,
-      "#f2c94c",
-      0.9,
-      "#ff6b6b"
+      MAGMA[2],
+      0.65,
+      MAGMA[3],
+      0.82,
+      MAGMA[4],
+      1,
+      MAGMA[5]
     ],
-    "circle-radius": ["interpolate", ["linear"], ["get", "score"], 0.2, 18, 0.9, 46],
-    "circle-opacity": 0.34,
-    "circle-stroke-color": "#f5f0e8",
-    "circle-stroke-opacity": 0.3,
-    "circle-stroke-width": 1
+    "circle-radius": ["interpolate", ["linear"], ["get", "score"], 0.2, 16, 0.9, 48],
+    "circle-opacity": ["interpolate", ["linear"], ["get", "score"], 0, 0.16, 1, 0.78],
+    "circle-stroke-color": MAGMA[5],
+    "circle-stroke-opacity": luminousMapStyle.hexStrokeOpacity,
+    "circle-stroke-width": 0.7
   }
 };
 
-export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSelectOperator }: Props) {
+const signalLayer: LayerProps = {
+  id: "signal-points",
+  type: "circle",
+  paint: {
+    "circle-color": ["get", "color"],
+    "circle-radius": 4.8,
+    "circle-opacity": 0.92,
+    "circle-stroke-color": surfaces.bg,
+    "circle-stroke-width": 1.2
+  }
+};
+
+const selectedSignalLayer: LayerProps = {
+  id: "signal-selected",
+  type: "circle",
+  filter: ["==", ["get", "id"], ""],
+  paint: {
+    "circle-radius": 12,
+    "circle-color": "rgba(255,255,255,0)",
+    "circle-stroke-color": ["get", "color"],
+    "circle-stroke-width": 1.6
+  }
+};
+
+export function OperatorMap({
+  operators,
+  heatmapCells,
+  signals = [],
+  selectedOperatorId,
+  selectedSignalId = null,
+  layers = emptyLayers,
+  onSelectOperator,
+  onSelectSignal
+}: Props) {
   const mapRef = useRef<MapRef | null>(null);
   const [hoveredOperatorId, setHoveredOperatorId] = useState<string | null>(null);
-  const data = useMemo(() => operatorsToFeatureCollection(operators), [operators]);
+  const operatorData = useMemo(() => operatorsToFeatureCollection(operators), [operators]);
   const heatmapData = useMemo(() => heatmapToFeatureCollection(heatmapCells), [heatmapCells]);
+  const signalData = useMemo(() => signalsToFeatureCollection(signals), [signals]);
   const inspectedOperator =
     operators.find((item) => item.id === (selectedOperatorId ?? hoveredOperatorId)) ?? null;
-  const selected = useMemo(
+  const selectedOperatorLayer = useMemo(
     () =>
       ({
         ...selectedLayer,
@@ -133,9 +194,25 @@ export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSel
       }) as unknown as LayerProps,
     [selectedOperatorId]
   );
+  const selectedSignal = signals.find((signal) => signal.id === selectedSignalId) ?? null;
+  const selectedSignalCircleLayer = useMemo(
+    () =>
+      ({
+        ...selectedSignalLayer,
+        filter: ["==", ["get", "id"], selectedSignalId ?? ""]
+      }) as unknown as LayerProps,
+    [selectedSignalId]
+  );
 
   useEffect(() => {
-    if (!selectedOperatorId) {
+    if (!selectedSignal || selectedSignal.lat === null || selectedSignal.lng === null) {
+      return;
+    }
+    mapRef.current?.flyTo({ center: [selectedSignal.lng, selectedSignal.lat], zoom: 13.4, duration: 650 });
+  }, [selectedSignal]);
+
+  useEffect(() => {
+    if (!selectedOperatorId || selectedSignalId) {
       return;
     }
     const operator = operators.find((item) => item.id === selectedOperatorId);
@@ -143,17 +220,25 @@ export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSel
       return;
     }
     mapRef.current?.flyTo({ center: [operator.lng, operator.lat], zoom: 13, duration: 650 });
-  }, [operators, selectedOperatorId]);
+  }, [operators, selectedOperatorId, selectedSignalId]);
 
   function handleClick(event: MapLayerMouseEvent) {
+    const signalFeature = event.features?.find((item) => item.layer.id === "signal-points") as
+      | Feature<Point, { id?: string; related_operator_id?: string | null }>
+      | undefined;
+    if (signalFeature?.properties?.id) {
+      onSelectSignal?.(signalFeature.properties.id);
+      if (signalFeature.properties.related_operator_id) {
+        onSelectOperator(signalFeature.properties.related_operator_id);
+      }
+      return;
+    }
+
     const feature = event.features?.find((item) => item.layer.id === "operator-points") as
       | Feature<Point, { id?: string }>
       | undefined;
     if (feature?.properties?.id) {
-      const operator = operators.find((item) => item.id === feature.properties?.id);
-      if (operator) {
-        onSelectOperator(operator.id);
-      }
+      onSelectOperator(feature.properties.id);
       return;
     }
 
@@ -166,8 +251,14 @@ export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSel
     }
   }
 
+  const interactiveLayerIds = [
+    layers.signals ? "signal-points" : null,
+    layers.operators ? "operator-points" : null,
+    layers.operators ? "operator-clusters" : null
+  ].filter(Boolean) as string[];
+
   return (
-    <section className="mapStage" aria-label="Operator map">
+    <section className="wr-map-stage mapStage" aria-label="Operator map">
       <Map
         ref={mapRef}
         mapLib={maplibregl}
@@ -179,7 +270,7 @@ export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSel
         ]}
         minZoom={9}
         maxZoom={17}
-        interactiveLayerIds={["operator-points", "operator-clusters"]}
+        interactiveLayerIds={interactiveLayerIds}
         onClick={handleClick}
         onMouseMove={(event) => {
           const feature = event.features?.find((item) => item.layer.id === "operator-points");
@@ -188,43 +279,56 @@ export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSel
         onMouseLeave={() => setHoveredOperatorId(null)}
         attributionControl={false}
       >
-        <Source id="whitespace" type="geojson" data={heatmapData}>
-          <Layer {...heatmapLayer} />
-        </Source>
-        <Source id="operators" type="geojson" data={data} cluster clusterRadius={48} clusterMaxZoom={13}>
-          <Layer {...clusterLayer} />
-          <Layer {...clusterCountLayer} />
-          <Layer {...pointLayer} />
-          <Layer {...selected} />
-        </Source>
+        {layers.opportunity ? (
+          <Source id="whitespace" type="geojson" data={heatmapData}>
+            <Layer {...heatmapLayer} />
+          </Source>
+        ) : null}
+        {layers.signals ? (
+          <Source id="signals" type="geojson" data={signalData}>
+            <Layer {...signalLayer} />
+            <Layer {...selectedSignalCircleLayer} />
+          </Source>
+        ) : null}
+        {layers.operators ? (
+          <Source id="operators" type="geojson" data={operatorData} cluster clusterRadius={48} clusterMaxZoom={13}>
+            <Layer {...clusterLayer} />
+            <Layer {...clusterCountLayer} />
+            <Layer {...pointLayer} />
+            <Layer {...selectedOperatorLayer} />
+          </Source>
+        ) : null}
       </Map>
-      <div className="mapLegend">
-        <span><i className="legendRecovery" />Recovery</span>
-        <span><i className="legendSpa" />Spa</span>
-        <span><i className="legendFitness" />Fitness</span>
-        <span><i className="legendAllied" />Allied</span>
-        <span><i className="legendWhitespace" />White-space</span>
+      <div className="wr-map-grain" aria-hidden />
+      <div className="wr-map-legend">
+        <span>SIGNAL DENSITY · H3 HEXBIN</span>
+        <div>
+          <i />
+          <b>low to high</b>
+        </div>
+        <p>
+          <span className="wr-pin-key" /> operator
+          <span className="wr-pin-key is-new" /> new
+        </p>
       </div>
-      {inspectedOperator ? (
-        <div className="mapInspect" aria-live="polite">
+      <div className="wr-zoom-control" aria-label="Map zoom controls">
+        <button type="button" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in">
+          +
+        </button>
+        <button type="button" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out">
+          -
+        </button>
+      </div>
+      {inspectedOperator && !selectedOperatorId ? (
+        <div className="wr-map-hover" aria-live="polite">
           <strong>{inspectedOperator.name}</strong>
-          <span>{inspectedOperator.source_refs[0]?.source_name ?? "unknown source"}</span>
-          <small>{formatFreshness(inspectedOperator.freshness_age_hours)}</small>
+          <span>{inspectedOperator.neighborhood ?? inspectedOperator.municipality ?? "Metro Vancouver"}</span>
         </div>
       ) : null}
+      <div className="wr-map-label" aria-hidden>
+        <span>METRO VANCOUVER</span>
+        <b style={{ color: text.muted }}>LIVE MAPLIBRE</b>
+      </div>
     </section>
   );
-}
-
-function formatFreshness(ageHours?: number | null): string {
-  if (ageHours === null || ageHours === undefined) {
-    return "freshness unknown";
-  }
-  if (ageHours < 1) {
-    return "updated under 1h ago";
-  }
-  if (ageHours < 48) {
-    return `updated ${Math.round(ageHours)}h ago`;
-  }
-  return `updated ${Math.round(ageHours / 24)}d ago`;
 }
