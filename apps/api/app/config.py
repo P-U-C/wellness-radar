@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     api_analyst_token: str = ""
     api_admin_token: str = ""
     ai_cost_alert_threshold_usd: float = 25.0
+    wr_alert_webhook_url: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
