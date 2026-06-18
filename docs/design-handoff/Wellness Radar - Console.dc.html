@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#080D18; }
+  @keyframes wr-pulse { 0%,100%{opacity:.35;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
+  @keyframes wr-fade { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:rgba(133,149,168,.28);border-radius:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</helmet>
+<div style="height:100vh; min-height:640px; background:#080D18; color:#EAF0F7; font-family:'Space Grotesk',sans-serif; display:flex; flex-direction:column; overflow:hidden;">
+
+  <!-- ===== TOP BAR + NAV ===== -->
+  <header style="height:56px; flex:none; display:flex; align-items:center; gap:18px; padding:0 18px; background:#0F1622; border-bottom:1px solid #212D3D;">
+    <div style="display:flex; align-items:center; gap:11px;">
+      <svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 2 L20 6.5 L20 15.5 L12 20 L4 15.5 L4 6.5 Z" fill="none" stroke="#38BDF8" stroke-width="1.4"/><circle cx="12" cy="11.2" r="2.6" fill="#38BDF8"/></svg>
+      <div style="display:flex; flex-direction:column; line-height:1;">
+        <span style="font:700 14px/1.1 'Space Grotesk',sans-serif; color:#EAF0F7;">Wellness Radar</span>
+        <span style="font:500 9px/1.3 'Space Mono',monospace; color:#5A6A7E; letter-spacing:.1em;">METRO VANCOUVER</span>
+      </div>
+    </div>
+
+    <nav style="display:flex; gap:3px; margin-left:8px;">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="7">
+        <button type="button" onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</button>
+      </sc-for>
+    </nav>
+
+    <div style="flex:1;"></div>
+
+    <button type="button" onClick="{{ goSearch }}" style="height:34px; width:230px; display:flex; align-items:center; gap:9px; background:#080D18; border:1px solid #2B3A4D; border-radius:8px; padding:0 12px; cursor:pointer;">
+      <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="5.5" cy="5.5" r="4" fill="none" stroke="#5A6A7E" stroke-width="1.3"/><line x1="8.5" y1="8.5" x2="11.5" y2="11.5" stroke="#5A6A7E" stroke-width="1.3"/></svg>
+      <span style="font:400 12px/1 'Space Mono',monospace; color:#5A6A7E;">Search ontology</span>
+      <span style="margin-left:auto; font:500 10px/1 'Space Mono',monospace; color:#5A6A7E; border:1px solid #2B3A4D; border-radius:3px; padding:2px 5px;">/</span>
+    </button>
+    <div style="display:flex; align-items:center; gap:13px; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">
+      <span style="display:inline-flex; align-items:center; gap:6px; color:#34D399;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399; box-shadow:0 0 6px #34D399; animation:wr-pulse 2.4s infinite;"></span>live</span>
+      <span>14:32 PDT</span>
+    </div>
+  </header>
+
+  <!-- ===== SCREEN AREA ===== -->
+  <div style="flex:1; min-height:0;">
+
+    <!-- ============ SCREEN 1 : MAIN MAP CONSOLE ============ -->
+    <sc-if value="{{ isConsole }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Console" style="height:100%; display:grid; grid-template-rows:1fr 158px;">
+      <div style="min-height:0; display:grid; grid-template-columns:240px 1fr;">
+        <!-- left rail -->
+        <aside style="min-height:0; overflow:auto; background:#0F1622; border-right:1px solid #212D3D; padding:16px 14px; display:flex; flex-direction:column; gap:16px;">
+          <div>
+            <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E; margin-bottom:11px;">LAYERS</div>
+            <div style="display:flex; flex-direction:column; gap:7px;">
+              <div style="display:flex; align-items:center; gap:10px; padding:9px 11px; background:rgba(56,189,248,.09); border:1px solid rgba(56,189,248,.32); border-radius:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#38BDF8; box-shadow:0 0 6px #38BDF8;"></span><span style="flex:1; font:600 13px/1 'Space Grotesk',sans-serif; color:#EAF0F7;">Operators</span><span style="font:600 11px/1 'Space Mono',monospace; color:#38BDF8;">212</span></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:9px 11px; background:rgba(245,165,36,.09); border:1px solid rgba(245,165,36,.32); border-radius:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#F5A524; box-shadow:0 0 6px #F5A524;"></span><span style="flex:1; font:600 13px/1 'Space Grotesk',sans-serif; color:#EAF0F7;">Signals</span><span style="font:600 11px/1 'Space Mono',monospace; color:#F5A524;">heat</span></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:9px 11px; background:#16202E; border:1px solid #2B3A4D; border-radius:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#A78BFA;"></span><span style="flex:1; font:600 13px/1 'Space Grotesk',sans-serif; color:#C2CEDB;">People</span><span style="font:600 11px/1 'Space Mono',monospace; color:#8595A8;">off</span></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:9px 11px; background:rgba(52,211,153,.09); border:1px solid rgba(52,211,153,.32); border-radius:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#34D399; box-shadow:0 0 6px #34D399;"></span><span style="flex:1; font:600 13px/1 'Space Grotesk',sans-serif; color:#EAF0F7;">Opportunity</span><span style="font:600 11px/1 'Space Mono',monospace; color:#34D399;">hexbin</span></div>
+            </div>
+          </div>
+          <div>
+            <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E; margin-bottom:11px;">CATEGORY</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              <span style="font:600 11px/1 'Space Grotesk',sans-serif; color:#080D18; background:#38BDF8; border-radius:6px; padding:6px 10px;">Recovery</span>
+              <span style="font:500 11px/1 'Space Grotesk',sans-serif; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:6px 10px;">Fitness</span>
+              <span style="font:500 11px/1 'Space Grotesk',sans-serif; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:6px 10px;">Spa</span>
+              <span style="font:500 11px/1 'Space Grotesk',sans-serif; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:6px 10px;">Mind</span>
+              <span style="font:500 11px/1 'Space Grotesk',sans-serif; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:6px 10px;">Allied</span>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:11px;"><span style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E;">OPPORTUNITY ≥</span><span style="font:700 11px/1 'Space Mono',monospace; color:#34D399;">0.55</span></div>
+            <div style="position:relative; height:6px; border-radius:4px; background:#16202E;"><div style="position:absolute; left:0; height:100%; width:55%; border-radius:4px; background:linear-gradient(90deg,#8c2981,#de4968,#fe9f6d);"></div><div style="position:absolute; left:55%; top:50%; width:14px; height:14px; border-radius:50%; background:#EAF0F7; transform:translate(-50%,-50%); box-shadow:0 0 0 3px #0F1622;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:11px;"><span style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E;">MIN CONFIDENCE</span><span style="font:700 11px/1 'Space Mono',monospace; color:#34D399;">0.60</span></div>
+            <div style="position:relative; height:6px; border-radius:4px; background:#16202E;"><div style="position:absolute; left:0; height:100%; width:60%; border-radius:4px; background:#34D399;"></div><div style="position:absolute; left:60%; top:50%; width:14px; height:14px; border-radius:50%; background:#EAF0F7; transform:translate(-50%,-50%); box-shadow:0 0 0 3px #0F1622;"></div></div>
+          </div>
+          <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:9px; padding:12px;">
+            <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.18em; color:#5A6A7E; margin-bottom:8px;">CATEGORY VELOCITY · 90D</div>
+            <div style="font:700 26px/1 'Space Grotesk',sans-serif; color:#34D399;">+18%</div>
+            <svg width="100%" height="34" viewBox="0 0 180 34" style="margin-top:6px; overflow:visible;"><polyline points="0,28 26,24 52,26 78,18 104,20 130,12 156,9 180,4" fill="none" stroke="#34D399" stroke-width="1.6"/><polygon points="0,28 26,24 52,26 78,18 104,20 130,12 156,9 180,4 180,34 0,34" fill="rgba(52,211,153,.12)"/></svg>
+          </div>
+          <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:9px; padding:12px;">
+            <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.18em; color:#5A6A7E; margin-bottom:9px;">SOURCE FRESHNESS</div>
+            <div style="display:flex; flex-direction:column; gap:7px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;">
+              <div style="display:flex; align-items:center; gap:7px;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399;"></span>City of Vancouver<span style="margin-left:auto; color:#C2CEDB;">3h</span></div>
+              <div style="display:flex; align-items:center; gap:7px;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399;"></span>OSM Overpass<span style="margin-left:auto; color:#C2CEDB;">11h</span></div>
+              <div style="display:flex; align-items:center; gap:7px;"><span style="width:6px;height:6px;border-radius:50%;background:#F5A524;"></span>Peer-city trends<span style="margin-left:auto; color:#C2CEDB;">fixture</span></div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- map hero -->
+        <div style="position:relative; min-width:0; background:#070b14; overflow:hidden;">
+          {{ mapMain }}
+          <!-- floating inspector -->
+          <div style="position:absolute; top:14px; right:14px; bottom:14px; width:330px; background:rgba(15,22,34,.86); border:1px solid #2B3A4D; border-radius:11px; backdrop-filter:blur(10px); box-shadow:0 18px 50px rgba(0,0,0,.4); overflow:auto; padding:16px; display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+              <div>
+                <div style="display:inline-flex; align-items:center; gap:6px; font:700 10px/1 'Space Mono',monospace; letter-spacing:.14em; color:#38BDF8; margin-bottom:8px;"><span style="width:7px;height:7px;border-radius:50%;background:#38BDF8; box-shadow:0 0 6px #38BDF8;"></span>OPERATOR · NEW</div>
+                <div style="font:700 21px/1.1 'Space Grotesk',sans-serif; color:#EAF0F7;">Othership</div>
+                <div style="font:500 12px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:3px;">Mount Pleasant · contrast therapy</div>
+              </div>
+              <button type="button" onClick="{{ goOperator }}" style="font:500 10px/1 'Space Mono',monospace; color:#38BDF8; background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.3); border-radius:6px; padding:6px 9px; cursor:pointer;">OPEN ↗</button>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+              <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:8px; padding:10px;"><div style="font:700 19px/1 'Space Grotesk',sans-serif; color:#EAF0F7;">7</div><div style="font:500 9px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:4px;">SUPPLY</div></div>
+              <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:8px; padding:10px;"><div style="font:700 19px/1 'Space Grotesk',sans-serif; color:#34D399;">0.71</div><div style="font:500 9px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:4px;">OPP SCORE</div></div>
+              <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:8px; padding:10px;"><div style="font:700 19px/1 'Space Grotesk',sans-serif; color:#F5A524;">+18%</div><div style="font:500 9px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:4px;">VELOCITY</div></div>
+            </div>
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:9px; padding:12px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><span style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E;">PROVENANCE</span><span style="font:600 9px/1 'Space Mono',monospace; color:#34D399;">verified 1h</span></div>
+              <div style="display:flex; flex-direction:column; gap:7px;">
+                <div style="display:inline-flex; align-items:center; gap:8px; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:7px;height:7px;border-radius:50%;background:#38BDF8;"></span>City of Vancouver<span style="margin-left:auto; color:#8595A8;">official</span></div>
+                <div style="display:inline-flex; align-items:center; gap:8px; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:7px;height:7px;border-radius:50%;background:#A78BFA;"></span>OrgBook BC<span style="margin-left:auto; color:#8595A8;">commercial</span></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:9px; margin-top:11px;"><span style="font:600 9px/1 'Space Mono',monospace; color:#8595A8;">CONF</span><div style="flex:1; height:6px; border-radius:4px; background:#16202E; overflow:hidden;"><div style="width:92%; height:100%; background:linear-gradient(90deg,#8c2981,#de4968,#fe9f6d);"></div></div><span style="font:700 11px/1 'Space Mono',monospace; color:#fe9f6d;">0.92</span></div>
+            </div>
+            <div>
+              <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E; margin-bottom:9px;">RELATED SIGNALS</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; gap:9px; align-items:flex-start;"><span style="width:7px;height:7px;border-radius:50%;background:#F5A524; margin-top:4px; flex:none;"></span><div><div style="font:500 12px/1.3 'Space Grotesk',sans-serif; color:#C2CEDB;">Second location permit filed</div><div style="font:500 10px/1 'Space Mono',monospace; color:#8595A8; margin-top:2px;">city · 3h</div></div></div>
+                <div style="display:flex; gap:9px; align-items:flex-start;"><span style="width:7px;height:7px;border-radius:50%;background:#A78BFA; margin-top:4px; flex:none;"></span><div><div style="font:500 12px/1.3 'Space Grotesk',sans-serif; color:#C2CEDB;">Founder profiled in BIV</div><div style="font:500 10px/1 'Space Mono',monospace; color:#8595A8; margin-top:2px;">press · 2d</div></div></div>
+              </div>
+            </div>
+          </div>
+          <div style="position:absolute; left:14px; bottom:14px; display:flex; flex-direction:column; gap:9px; background:rgba(15,22,34,.85); border:1px solid #2B3A4D; border-radius:9px; padding:11px 13px; backdrop-filter:blur(8px);">
+            <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E;">SIGNAL DENSITY · H3 HEXBIN</div>
+            <div style="display:flex; align-items:center; gap:8px;"><div style="width:140px; height:10px; border-radius:4px; background:linear-gradient(90deg,#1b0c33,#451077,#8c2981,#de4968,#fe9f6d,#fcfdbf);"></div><span style="font:500 9px/1 'Space Mono',monospace; color:#8595A8;">low → high</span></div>
+            <div style="display:flex; gap:13px;"><span style="display:inline-flex; align-items:center; gap:5px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="width:7px;height:7px;border-radius:50%;background:#38BDF8;"></span>operator</span><span style="display:inline-flex; align-items:center; gap:5px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="width:7px;height:7px;border-radius:50%;border:1.4px solid #38BDF8;"></span>new</span></div>
+          </div>
+          <div style="position:absolute; right:14px; bottom:14px; display:flex; flex-direction:column; background:rgba(15,22,34,.9); border:1px solid #2B3A4D; border-radius:8px; overflow:hidden;">
+            <div style="width:30px; height:30px; display:grid; place-items:center; color:#C2CEDB; font:400 18px/1 'Space Grotesk'; border-bottom:1px solid #2B3A4D;">+</div>
+            <div style="width:30px; height:30px; display:grid; place-items:center; color:#C2CEDB; font:400 18px/1 'Space Grotesk';">−</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- feed timeline strip -->
+      <div style="min-height:0; background:#0F1622; border-top:1px solid #212D3D; padding:12px 16px; display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px;"><span style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E;">SIGNAL FEED · LAST 24H</span><button type="button" onClick="{{ goFeed }}" style="font:500 10px/1 'Space Mono',monospace; color:#38BDF8; background:none; border:none; cursor:pointer;">view all ↗</button><div style="flex:1; height:1px; background:#212D3D;"></div><span style="font:500 10px/1 'Space Mono',monospace; color:#8595A8;">now</span></div>
+        <div style="flex:1; display:flex; gap:10px; overflow:hidden;">
+          <div style="width:232px; flex:none; background:#16202E; border:1px solid #2B3A4D; border-top:2px solid #F5A524; border-radius:8px; padding:10px;"><div style="display:flex; justify-content:space-between;"><span style="font:600 9px/1 'Space Mono',monospace; color:#F5A524;">NEW OPERATOR</span><span style="font:500 9px/1 'Space Mono',monospace; color:#8595A8;">3h</span></div><div style="font:600 12px/1.3 'Space Grotesk',sans-serif; color:#EAF0F7; margin-top:6px;">Othership files 2nd permit</div><div style="font:500 9px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">● City of Vancouver · 0.9</div></div>
+          <div style="width:232px; flex:none; background:#16202E; border:1px solid #2B3A4D; border-top:2px solid #38BDF8; border-radius:8px; padding:10px;"><div style="display:flex; justify-content:space-between;"><span style="font:600 9px/1 'Space Mono',monospace; color:#38BDF8;">PRESS</span><span style="font:500 9px/1 'Space Mono',monospace; color:#8595A8;">6h</span></div><div style="font:600 12px/1.3 'Space Grotesk',sans-serif; color:#EAF0F7; margin-top:6px;">Cold plunge opens in Gastown</div><div style="font:500 9px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">● Daily Hive · 0.78</div></div>
+          <div style="width:232px; flex:none; background:#16202E; border:1px solid #2B3A4D; border-top:2px solid #34D399; border-radius:8px; padding:10px;"><div style="display:flex; justify-content:space-between;"><span style="font:600 9px/1 'Space Mono',monospace; color:#34D399;">WHITESPACE</span><span style="font:500 9px/1 'Space Mono',monospace; color:#8595A8;">9h</span></div><div style="font:600 12px/1.3 'Space Grotesk',sans-serif; color:#EAF0F7; margin-top:6px;">Recovery gap widens in Burnaby</div><div style="font:500 9px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">● analytics · 0.66</div></div>
+          <div style="width:232px; flex:none; background:#16202E; border:1px solid #2B3A4D; border-top:2px solid #F87171; border-radius:8px; padding:10px;"><div style="display:flex; justify-content:space-between;"><span style="font:600 9px/1 'Space Mono',monospace; color:#F87171;">RECALL</span><span style="font:500 9px/1 'Space Mono',monospace; color:#8595A8;">1d</span></div><div style="font:600 12px/1.3 'Space Grotesk',sans-serif; color:#EAF0F7; margin-top:6px;">Health Canada flags brand</div><div style="font:500 9px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">● Health Canada · 0.95</div></div>
+          <div style="flex:1; min-width:60px; display:flex; align-items:center; justify-content:center; border:1px dashed #2B3A4D; border-radius:8px; font:500 10px/1.4 'Space Mono',monospace; color:#5A6A7E; text-align:center;">+34<br>earlier</div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ SCREEN 2 : OPERATOR DETAIL ============ -->
+    <sc-if value="{{ isOperator }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Operator detail" style="height:100%; overflow:auto;">
+      <div style="max-width:1180px; margin:0 auto; padding:26px 28px 60px; display:flex; flex-direction:column; gap:20px;">
+        <!-- breadcrumb -->
+        <div style="display:flex; align-items:center; gap:8px; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">
+          <button type="button" onClick="{{ goConsole }}" style="background:none; border:none; color:#38BDF8; cursor:pointer; font:inherit;">← Console</button>
+          <span style="color:#5A6A7E;">/</span><span>Operators</span><span style="color:#5A6A7E;">/</span><span style="color:#C2CEDB;">Othership</span>
+        </div>
+
+        <!-- header -->
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:24px;">
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:inline-flex; align-items:center; gap:8px;">
+              <span style="display:inline-flex; align-items:center; gap:6px; font:700 10px/1 'Space Mono',monospace; letter-spacing:.14em; color:#38BDF8; background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.3); border-radius:6px; padding:6px 9px;"><span style="width:7px;height:7px;border-radius:50%;background:#38BDF8;box-shadow:0 0 6px #38BDF8;"></span>OPERATOR</span>
+              <span style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.14em; color:#F5A524; background:rgba(245,165,36,.1); border:1px solid rgba(245,165,36,.3); border-radius:6px; padding:6px 9px;">NEW</span>
+            </div>
+            <h1 style="margin:0; font:700 34px/1 'Space Grotesk',sans-serif; color:#EAF0F7; letter-spacing:-.02em;">Othership — Mount Pleasant</h1>
+            <div style="font:500 13px/1.3 'Space Mono',monospace; color:#8595A8;">102–1 W 5th Ave, Vancouver BC · contrast therapy · sauna</div>
+          </div>
+          <div style="display:flex; gap:9px;">
+            <button type="button" onClick="{{ goConsole }}" style="font:600 12px/1 'Space Grotesk'; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:8px; padding:10px 14px; cursor:pointer;">View on map</button>
+            <button type="button" style="font:600 12px/1 'Space Grotesk'; color:#080D18; background:#38BDF8; border:none; border-radius:8px; padding:10px 14px; cursor:pointer;">Export record</button>
+          </div>
+        </div>
+
+        <!-- metric strip (Placer-style) -->
+        <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:12px;">
+          <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;"><div style="font:700 28px/1 'Space Grotesk'; color:#EAF0F7;">7</div><div style="font:500 10px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:6px;">RECOVERY SUPPLY<br>· MOUNT PLEASANT</div></div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;"><div style="font:700 28px/1 'Space Grotesk'; color:#34D399;">0.71</div><div style="font:500 10px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:6px;">OPPORTUNITY<br>SCORE</div></div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;"><div style="font:700 28px/1 'Space Grotesk'; color:#F5A524;">+18%</div><div style="font:500 10px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:6px;">CATEGORY VELOCITY<br>· 90D</div></div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;"><div style="font:700 28px/1 'Space Grotesk'; color:#EAF0F7;">#2</div><div style="font:500 10px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:6px;">RANK IN<br>RECOVERY · YVR</div></div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;"><div style="font:700 28px/1 'Space Grotesk'; color:#fe9f6d;">0.92</div><div style="font:500 10px/1.3 'Space Mono',monospace; color:#8595A8; margin-top:6px;">RECORD<br>CONFIDENCE</div></div>
+        </div>
+
+        <!-- two column -->
+        <div style="display:grid; grid-template-columns:1.55fr 1fr; gap:20px; align-items:start;">
+          <!-- left col -->
+          <div style="display:flex; flex-direction:column; gap:20px;">
+            <!-- map + competitive set -->
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:12px; overflow:hidden;">
+              <div style="position:relative; height:260px;">{{ mapMini }}
+                <div style="position:absolute; left:14px; top:14px; font:600 10px/1 'Space Mono',monospace; letter-spacing:.14em; color:#C2CEDB; background:rgba(8,13,24,.7); border:1px solid #2B3A4D; border-radius:6px; padding:6px 9px;">TRADE AREA · 1.5KM</div>
+              </div>
+              <div style="padding:16px; border-top:1px solid #212D3D;">
+                <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E; margin-bottom:12px;">COMPETITIVE SET · RECOVERY WITHIN 1.5KM</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:12px; font:500 12px/1 'Space Grotesk'; color:#C2CEDB;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span><span style="flex:1;">Havn Saunas</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">0.6km · open</span><div style="width:80px; height:5px; border-radius:3px; background:#16202E;"><div style="width:64%; height:100%; border-radius:3px; background:#38BDF8;"></div></div></div>
+                  <div style="display:flex; align-items:center; gap:12px; font:500 12px/1 'Space Grotesk'; color:#C2CEDB;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span><span style="flex:1;">Sweat &amp; Tonic</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">0.9km · open</span><div style="width:80px; height:5px; border-radius:3px; background:#16202E;"><div style="width:52%; height:100%; border-radius:3px; background:#38BDF8;"></div></div></div>
+                  <div style="display:flex; align-items:center; gap:12px; font:500 12px/1 'Space Grotesk'; color:#C2CEDB;"><span style="width:6px;height:6px;border-radius:50%;border:1.4px solid #38BDF8;"></span><span style="flex:1;">Brass Door Banya</span><span style="font:500 11px/1 'Space Mono',monospace; color:#F5A524;">1.2km · planned</span><div style="width:80px; height:5px; border-radius:3px; background:#16202E;"><div style="width:30%; height:100%; border-radius:3px; background:#F5A524;"></div></div></div>
+                </div>
+              </div>
+            </div>
+            <!-- signal history -->
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:12px; padding:18px;">
+              <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E; margin-bottom:16px;">SIGNAL HISTORY</div>
+              <div style="display:flex; flex-direction:column; gap:0;">
+                <div style="display:grid; grid-template-columns:18px 1fr; gap:14px;"><div style="display:flex; flex-direction:column; align-items:center;"><span style="width:11px;height:11px;border-radius:50%;background:#F5A524;box-shadow:0 0 6px #F5A524;"></span><span style="flex:1; width:2px; background:#212D3D;"></span></div><div style="padding-bottom:18px;"><div style="font:600 14px/1.3 'Space Grotesk'; color:#EAF0F7;">Second-location permit filed</div><div style="font:400 12px/1.4 'Space Grotesk'; color:#8595A8; margin-top:4px;">Why it matters: expansion into the densest recovery corridor in the city.</div><div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>City of Vancouver · official · 3h · conf 0.90</div></div></div>
+                <div style="display:grid; grid-template-columns:18px 1fr; gap:14px;"><div style="display:flex; flex-direction:column; align-items:center;"><span style="width:11px;height:11px;border-radius:50%;background:#A78BFA;"></span><span style="flex:1; width:2px; background:#212D3D;"></span></div><div style="padding-bottom:18px;"><div style="font:600 14px/1.3 'Space Grotesk'; color:#EAF0F7;">Founder profiled in BIV</div><div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399;"></span>Business in Vancouver · press · 2d · conf 0.82</div></div></div>
+                <div style="display:grid; grid-template-columns:18px 1fr; gap:14px;"><div style="display:flex; flex-direction:column; align-items:center;"><span style="width:11px;height:11px;border-radius:50%;background:#38BDF8;"></span></div><div><div style="font:600 14px/1.3 'Space Grotesk'; color:#EAF0F7;">Business licence issued</div><div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>City of Vancouver · official · 38d · conf 0.95</div></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- right col : provenance drawer -->
+          <div style="display:flex; flex-direction:column; gap:20px;">
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:12px; padding:18px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;"><span style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E;">PROVENANCE</span><span style="display:inline-flex; align-items:center; gap:6px; font:600 10px/1 'Space Mono',monospace; color:#34D399;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399;"></span>VERIFIED 1H AGO</span></div>
+              <div style="display:flex; flex-direction:column; gap:9px;">
+                <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:9px; padding:12px;"><div style="display:flex; align-items:center; gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#38BDF8;"></span><span style="font:600 12px/1 'Space Grotesk'; color:#EAF0F7;">City of Vancouver — Business Licences</span></div><div style="display:flex; align-items:center; gap:8px; margin-top:9px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="color:#38BDF8;">official</span><span>·</span><span>Opendatasoft</span><span style="margin-left:auto; display:inline-flex; align-items:center; gap:4px; color:#38BDF8;">source ↗</span></div></div>
+                <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:9px; padding:12px;"><div style="display:flex; align-items:center; gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#A78BFA;"></span><span style="font:600 12px/1 'Space Grotesk'; color:#EAF0F7;">OrgBook BC — Registry</span></div><div style="display:flex; align-items:center; gap:8px; margin-top:9px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="color:#A78BFA;">commercial</span><span>·</span><span>legal-name match</span><span style="margin-left:auto; display:inline-flex; align-items:center; gap:4px; color:#38BDF8;">source ↗</span></div></div>
+                <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:9px; padding:12px;"><div style="display:flex; align-items:center; gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#34D399;"></span><span style="font:600 12px/1 'Space Grotesk'; color:#EAF0F7;">Daily Hive — Press</span></div><div style="display:flex; align-items:center; gap:8px; margin-top:9px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="color:#34D399;">reputable press</span><span>·</span><span>BC-gated</span><span style="margin-left:auto; display:inline-flex; align-items:center; gap:4px; color:#38BDF8;">source ↗</span></div></div>
+              </div>
+              <div style="margin-top:14px; padding-top:14px; border-top:1px solid #212D3D;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;"><span style="font:600 10px/1 'Space Mono',monospace; color:#8595A8; width:88px;">CONFIDENCE</span><div style="flex:1; height:7px; border-radius:4px; background:#16202E; overflow:hidden;"><div style="width:92%; height:100%; background:linear-gradient(90deg,#8c2981,#de4968,#fe9f6d);"></div></div><span style="font:700 12px/1 'Space Mono',monospace; color:#fe9f6d;">0.92</span></div>
+                <div style="font:400 11px/1.5 'Space Grotesk'; color:#8595A8;">3 independent sources · BC-gate passed (PostGIS) · no Washington-State contamination.</div>
+              </div>
+            </div>
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:12px; padding:18px;">
+              <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E; margin-bottom:13px;">ATTRIBUTES</div>
+              <dl style="margin:0; display:grid; grid-template-columns:96px 1fr; gap:11px 12px; font:500 12px/1.3 'Space Grotesk';">
+                <dt style="color:#8595A8;">Status</dt><dd style="margin:0; color:#EAF0F7;">New (permit issued)</dd>
+                <dt style="color:#8595A8;">Category</dt><dd style="margin:0;"><span style="display:inline-flex; gap:5px; flex-wrap:wrap;"><span style="background:#16202E;border:1px solid #2B3A4D;border-radius:999px;padding:3px 8px;color:#C2CEDB;font-size:11px;">recovery</span><span style="background:#16202E;border:1px solid #2B3A4D;border-radius:999px;padding:3px 8px;color:#C2CEDB;font-size:11px;">sauna</span></span></dd>
+                <dt style="color:#8595A8;">Org ID</dt><dd style="margin:0; color:#C2CEDB; font-family:'Space Mono',monospace; font-size:11px;">org_8f2a…b41</dd>
+                <dt style="color:#8595A8;">Geocode</dt><dd style="margin:0; color:#C2CEDB; font-family:'Space Mono',monospace; font-size:11px;">49.2664, -123.0998</dd>
+                <dt style="color:#8595A8;">Neighborhood</dt><dd style="margin:0; color:#EAF0F7;">Mount Pleasant</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ SCREEN 3 : SIGNAL FEED ============ -->
+    <sc-if value="{{ isFeed }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Signal feed" style="height:100%; display:grid; grid-template-columns:236px 1fr 360px;">
+      <!-- filters -->
+      <aside style="min-height:0; overflow:auto; background:#0F1622; border-right:1px solid #212D3D; padding:18px 15px; display:flex; flex-direction:column; gap:18px;">
+        <div>
+          <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E; margin-bottom:11px;">SIGNAL TYPE</div>
+          <div style="display:flex; flex-direction:column; gap:6px; font:500 12px/1 'Space Grotesk';">
+            <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; background:rgba(245,165,36,.09); border:1px solid rgba(245,165,36,.3); border-radius:7px; color:#EAF0F7;"><span style="width:7px;height:7px;border-radius:50%;background:#F5A524;"></span>New operator<span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">12</span></div>
+            <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; background:rgba(56,189,248,.09); border:1px solid rgba(56,189,248,.3); border-radius:7px; color:#EAF0F7;"><span style="width:7px;height:7px;border-radius:50%;background:#38BDF8;"></span>Press / news<span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">19</span></div>
+            <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; background:rgba(52,211,153,.09); border:1px solid rgba(52,211,153,.3); border-radius:7px; color:#EAF0F7;"><span style="width:7px;height:7px;border-radius:50%;background:#34D399;"></span>Whitespace<span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">8</span></div>
+            <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; background:rgba(248,113,113,.09); border:1px solid rgba(248,113,113,.3); border-radius:7px; color:#EAF0F7;"><span style="width:7px;height:7px;border-radius:50%;background:#F87171;"></span>Regulatory / recall<span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">4</span></div>
+            <div style="display:flex; align-items:center; gap:9px; padding:8px 9px; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; color:#C2CEDB;"><span style="width:7px;height:7px;border-radius:50%;background:#8595A8;"></span>OSM observation<span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">4</span></div>
+          </div>
+        </div>
+        <div>
+          <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E; margin-bottom:11px;">TRUST TIER</div>
+          <div style="display:flex; flex-direction:column; gap:7px; font:500 11px/1.2 'Space Mono',monospace; color:#8595A8;">
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:2px;background:#38BDF8;"></span>official<span style="margin-left:auto; color:#C2CEDB;">87</span></div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:2px;background:#34D399;"></span>reputable press<span style="margin-left:auto; color:#C2CEDB;">64</span></div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:2px;background:#A78BFA;"></span>commercial api<span style="margin-left:auto; color:#C2CEDB;">41</span></div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:2px;background:#F5A524;"></span>community<span style="margin-left:auto; color:#C2CEDB;">20</span></div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:2px;background:#5A6A7E;"></span>ai_inferred<span style="margin-left:auto; color:#C2CEDB;">9</span></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:11px;"><span style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E;">CONFIDENCE ≥</span><span style="font:700 11px/1 'Space Mono',monospace; color:#34D399;">0.60</span></div>
+          <div style="position:relative; height:6px; border-radius:4px; background:#16202E;"><div style="position:absolute; left:0; height:100%; width:60%; border-radius:4px; background:#34D399;"></div><div style="position:absolute; left:60%; top:50%; width:14px; height:14px; border-radius:50%; background:#EAF0F7; transform:translate(-50%,-50%); box-shadow:0 0 0 3px #0F1622;"></div></div>
+        </div>
+      </aside>
+
+      <!-- feed stream -->
+      <div style="min-height:0; display:flex; flex-direction:column;">
+        <div style="flex:none; display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid #212D3D;">
+          <div><div style="font:700 18px/1 'Space Grotesk'; color:#EAF0F7;">Signal Feed</div><div style="font:500 11px/1 'Space Mono',monospace; color:#8595A8; margin-top:5px;">47 signals · last 24h · reverse chronological</div></div>
+          <div style="display:flex; align-items:center; gap:8px; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">sort<span style="color:#EAF0F7; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:6px 10px;">newest ▾</span></div>
+        </div>
+        <div style="flex:1; min-height:0; overflow:auto; padding:16px 22px; display:flex; flex-direction:column; gap:11px;">
+          <div style="display:flex; align-items:center; gap:8px; margin:2px 0 4px;"><span style="font:600 10px/1 'Space Mono',monospace; letter-spacing:.14em; color:#5A6A7E;">TODAY</span><div style="flex:1; height:1px; background:#212D3D;"></div></div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-left:3px solid #F5A524; border-radius:10px; padding:15px 17px; cursor:pointer; animation:wr-fade .4s ease;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;"><span style="font:700 9px/1 'Space Mono',monospace; color:#F5A524; background:rgba(245,165,36,.12); border-radius:4px; padding:4px 7px;">NEW OPERATOR</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">Mount Pleasant</span><span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">3h ago</span></div>
+            <div style="font:600 16px/1.3 'Space Grotesk'; color:#EAF0F7;">Othership files second-location permit in Mount Pleasant</div>
+            <div style="font:400 13px/1.5 'Space Grotesk'; color:#A6B0BC; margin-top:6px;">Why it matters: the chain is expanding into the densest recovery corridor in the city, raising competitive pressure on three nearby studios.</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:11px; border-top:1px solid #212D3D;"><span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:5px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>City of Vancouver · official</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#34D399;">0.90</span></span><span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#38BDF8;">fly to ↗</span></div>
+          </div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-left:3px solid #38BDF8; border-radius:10px; padding:15px 17px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;"><span style="font:700 9px/1 'Space Mono',monospace; color:#38BDF8; background:rgba(56,189,248,.12); border-radius:4px; padding:4px 7px;">PRESS</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">Gastown</span><span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">6h ago</span></div>
+            <div style="font:600 16px/1.3 'Space Grotesk'; color:#EAF0F7;">New cold-plunge &amp; contrast studio opens on Water Street</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:11px; border-top:1px solid #212D3D;"><span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:5px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399;"></span>Daily Hive · press</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#F5A524;">0.78</span></span><span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#38BDF8;">fly to ↗</span></div>
+          </div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-left:3px solid #34D399; border-radius:10px; padding:15px 17px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;"><span style="font:700 9px/1 'Space Mono',monospace; color:#34D399; background:rgba(52,211,153,.12); border-radius:4px; padding:4px 7px;">WHITESPACE</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">Burnaby</span><span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">9h ago</span></div>
+            <div style="font:600 16px/1.3 'Space Grotesk'; color:#EAF0F7;">Recovery supply gap widens in North Burnaby</div>
+            <div style="font:400 13px/1.5 'Space Grotesk'; color:#A6B0BC; margin-top:6px;">Why it matters: population grew 4% while recovery supply stayed flat — opportunity score crossed 0.65.</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:11px; border-top:1px solid #212D3D;"><span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:5px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399;"></span>Analytics · derived</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#F5A524;">0.66</span></span><span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#38BDF8;">view gap ↗</span></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; margin:8px 0 4px;"><span style="font:600 10px/1 'Space Mono',monospace; letter-spacing:.14em; color:#5A6A7E;">YESTERDAY</span><div style="flex:1; height:1px; background:#212D3D;"></div></div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-left:3px solid #F87171; border-radius:10px; padding:15px 17px; cursor:pointer;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;"><span style="font:700 9px/1 'Space Mono',monospace; color:#F87171; background:rgba(248,113,113,.12); border-radius:4px; padding:4px 7px;">RECALL</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">Province-wide</span><span style="margin-left:auto; font:500 11px/1 'Space Mono',monospace; color:#8595A8;">1d ago</span></div>
+            <div style="font:600 16px/1.3 'Space Grotesk'; color:#EAF0F7;">Health Canada flags supplement brand sold at wellness retailers</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:11px; border-top:1px solid #212D3D;"><span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:5px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>Health Canada · official</span><span style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#34D399;">0.95</span></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- detail rail -->
+      <aside style="min-height:0; overflow:auto; background:#0F1622; border-left:1px solid #212D3D; padding:18px 16px; display:flex; flex-direction:column; gap:16px;">
+        <div style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E;">SIGNAL DETAIL</div>
+        <div style="font:600 9px/1 'Space Mono',monospace; color:#F5A524; background:rgba(245,165,36,.12); border-radius:4px; padding:4px 7px; align-self:flex-start;">NEW OPERATOR</div>
+        <div style="font:700 18px/1.25 'Space Grotesk'; color:#EAF0F7;">Othership files second-location permit</div>
+        <div style="font:400 13px/1.5 'Space Grotesk'; color:#A6B0BC;">A second Othership contrast-therapy venue cleared the City of Vancouver licensing gate at 102–1 W 5th Ave, Mount Pleasant.</div>
+        <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:9px; padding:13px;">
+          <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.14em; color:#5A6A7E; margin-bottom:10px;">PROVENANCE</div>
+          <div style="display:flex; align-items:center; gap:8px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:7px;height:7px;border-radius:50%;background:#38BDF8;"></span>City of Vancouver<span style="margin-left:auto; color:#8595A8;">official · 3h</span></div>
+          <div style="display:flex; align-items:center; gap:9px; margin-top:11px;"><span style="font:600 9px/1 'Space Mono',monospace; color:#8595A8;">CONF</span><div style="flex:1; height:6px; border-radius:4px; background:#0F1622; overflow:hidden;"><div style="width:90%; height:100%; background:linear-gradient(90deg,#8c2981,#de4968,#fe9f6d);"></div></div><span style="font:700 11px/1 'Space Mono',monospace; color:#fe9f6d;">0.90</span></div>
+        </div>
+        <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:9px; padding:13px;">
+          <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.14em; color:#5A6A7E; margin-bottom:9px;">AI ENRICHMENT</div>
+          <div style="font:400 11px/1.5 'Space Grotesk'; color:#A6B0BC;">"Why it matters" generated by deterministic enricher v2 · <span style="color:#A78BFA;">not a source of truth</span>.</div>
+        </div>
+        <button type="button" onClick="{{ goOperator }}" style="font:600 12px/1 'Space Grotesk'; color:#080D18; background:#38BDF8; border:none; border-radius:8px; padding:11px; cursor:pointer;">Open operator record →</button>
+      </aside>
+    </div>
+    </sc-if>
+
+    <!-- ============ SCREEN 4 : OPPORTUNITY SURFACE ============ -->
+    <sc-if value="{{ isOpportunity }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Opportunity surface" style="height:100%; display:grid; grid-template-columns:1fr 460px;">
+      <!-- hexbin map -->
+      <div style="position:relative; min-width:0; background:#070b14; overflow:hidden;">
+        {{ mapOpp }}
+        <div style="position:absolute; left:16px; top:16px; display:flex; flex-direction:column; gap:4px;">
+          <div style="font:700 18px/1 'Space Grotesk'; color:#EAF0F7;">Opportunity Surface</div>
+          <div style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">recovery / contrast therapy · supply-demand whitespace</div>
+        </div>
+        <div style="position:absolute; left:16px; top:64px; display:flex; gap:7px;">
+          <span style="font:600 11px/1 'Space Grotesk'; color:#080D18; background:#34D399; border-radius:7px; padding:7px 11px;">Recovery</span>
+          <span style="font:500 11px/1 'Space Grotesk'; color:#C2CEDB; background:rgba(15,22,34,.8); border:1px solid #2B3A4D; border-radius:7px; padding:7px 11px;">Fitness</span>
+          <span style="font:500 11px/1 'Space Grotesk'; color:#C2CEDB; background:rgba(15,22,34,.8); border:1px solid #2B3A4D; border-radius:7px; padding:7px 11px;">Spa</span>
+        </div>
+        <!-- callout on a hot cell -->
+        <div style="position:absolute; left:54%; top:46%; width:188px; background:rgba(15,22,34,.92); border:1px solid #34D399; border-radius:9px; padding:11px 12px; backdrop-filter:blur(8px); box-shadow:0 0 24px rgba(52,211,153,.25);">
+          <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font:600 11px/1 'Space Grotesk'; color:#EAF0F7;">North Burnaby</span><span style="font:700 13px/1 'Space Mono',monospace; color:#34D399;">0.78</span></div>
+          <div style="font:500 9px/1.4 'Space Mono',monospace; color:#8595A8; margin-top:6px;">2 operators · 41k pop<br>demand &gt;&gt; supply</div>
+        </div>
+        <div style="position:absolute; left:16px; bottom:16px; display:flex; flex-direction:column; gap:9px; background:rgba(15,22,34,.85); border:1px solid #2B3A4D; border-radius:9px; padding:11px 13px; backdrop-filter:blur(8px);">
+          <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E;">OPPORTUNITY SCORE · H3 HEXBIN</div>
+          <div style="display:flex; align-items:center; gap:8px;"><div style="width:150px; height:10px; border-radius:4px; background:linear-gradient(90deg,#1b0c33,#451077,#8c2981,#de4968,#fe9f6d,#fcfdbf);"></div><span style="font:500 9px/1 'Space Mono',monospace; color:#8595A8;">0 → 1</span></div>
+          <div style="font:400 9px/1.4 'Space Mono',monospace; color:#5A6A7E;">supply-demand signal, not guaranteed attractiveness</div>
+        </div>
+      </div>
+
+      <!-- ranked list -->
+      <div style="min-height:0; display:flex; flex-direction:column; background:#0F1622; border-left:1px solid #212D3D;">
+        <div style="flex:none; padding:16px 18px; border-bottom:1px solid #212D3D;">
+          <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font:700 13px/1 'Space Grotesk'; color:#EAF0F7;">Ranked opportunities</span><span style="font:500 10px/1 'Space Mono',monospace; color:#8595A8;">22 areas · CSD level</span></div>
+        </div>
+        <div style="flex:1; min-height:0; overflow:auto; padding:14px 16px; display:flex; flex-direction:column; gap:11px;">
+          <!-- scorecard 1 -->
+          <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:11px; padding:14px; box-shadow:0 0 20px rgba(52,211,153,.08);">
+            <div style="display:flex; align-items:center; gap:10px;"><span style="font:700 13px/1 'Space Mono',monospace; color:#5A6A7E;">01</span><span style="flex:1; font:700 15px/1 'Space Grotesk'; color:#EAF0F7;">North Burnaby</span><span style="font:700 22px/1 'Space Grotesk'; color:#34D399;">0.78</span></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-top:12px;">
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#EAF0F7;">2</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">SUPPLY</div></div>
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#EAF0F7;">41k</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">POP</div></div>
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#F5A524;">+4%</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">DEMAND Δ</div></div>
+            </div>
+            <div style="margin-top:12px;">
+              <div style="font:600 9px/1 'Space Mono',monospace; letter-spacing:.12em; color:#5A6A7E; margin-bottom:8px;">COMPONENT BREAKDOWN</div>
+              <div style="display:flex; flex-direction:column; gap:6px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;">
+                <div style="display:flex; align-items:center; gap:8px;"><span style="width:78px;">undersupply</span><div style="flex:1; height:5px; border-radius:3px; background:#0F1622;"><div style="width:84%; height:100%; border-radius:3px; background:#34D399;"></div></div><span style="color:#C2CEDB;">0.84</span></div>
+                <div style="display:flex; align-items:center; gap:8px;"><span style="width:78px;">demand grow</span><div style="flex:1; height:5px; border-radius:3px; background:#0F1622;"><div style="width:71%; height:100%; border-radius:3px; background:#34D399;"></div></div><span style="color:#C2CEDB;">0.71</span></div>
+                <div style="display:flex; align-items:center; gap:8px;"><span style="width:78px;">access gap</span><div style="flex:1; height:5px; border-radius:3px; background:#0F1622;"><div style="width:62%; height:100%; border-radius:3px; background:#F5A524;"></div></div><span style="color:#C2CEDB;">0.62</span></div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:11px; border-top:1px solid #212D3D; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>StatCan + City</span><span style="color:#5A6A7E;">·</span><span>verified 6h</span><span style="margin-left:auto; color:#8595A8;">conf <span style="color:#fe9f6d;">0.81</span></span></div>
+          </div>
+          <!-- scorecard 2 -->
+          <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:11px; padding:14px;">
+            <div style="display:flex; align-items:center; gap:10px;"><span style="font:700 13px/1 'Space Mono',monospace; color:#5A6A7E;">02</span><span style="flex:1; font:700 15px/1 'Space Grotesk'; color:#EAF0F7;">Surrey — Guildford</span><span style="font:700 22px/1 'Space Grotesk'; color:#fe9f6d;">0.69</span></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-top:12px;">
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#EAF0F7;">1</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">SUPPLY</div></div>
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#EAF0F7;">63k</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">POP</div></div>
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#F5A524;">+6%</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">DEMAND Δ</div></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:11px; border-top:1px solid #212D3D; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>StatCan + City</span><span style="color:#5A6A7E;">·</span><span>verified 6h</span><span style="margin-left:auto;">conf <span style="color:#fe9f6d;">0.76</span></span></div>
+          </div>
+          <!-- scorecard 3 -->
+          <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:11px; padding:14px;">
+            <div style="display:flex; align-items:center; gap:10px;"><span style="font:700 13px/1 'Space Mono',monospace; color:#5A6A7E;">03</span><span style="flex:1; font:700 15px/1 'Space Grotesk'; color:#EAF0F7;">Coquitlam Centre</span><span style="font:700 22px/1 'Space Grotesk'; color:#fe9f6d;">0.64</span></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-top:12px;">
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#EAF0F7;">3</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">SUPPLY</div></div>
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#EAF0F7;">52k</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">POP</div></div>
+              <div style="background:#0F1622; border:1px solid #212D3D; border-radius:7px; padding:8px 9px;"><div style="font:600 13px/1 'Space Mono',monospace; color:#34D399;">+3%</div><div style="font:500 9px/1.2 'Space Mono',monospace; color:#8595A8; margin-top:4px;">DEMAND Δ</div></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:11px; border-top:1px solid #212D3D; font:500 10px/1 'Space Mono',monospace; color:#8595A8;"><span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>StatCan + City</span><span style="color:#5A6A7E;">·</span><span>verified 6h</span><span style="margin-left:auto;">conf <span style="color:#F5A524;">0.69</span></span></div>
+          </div>
+        </div>
+        <div style="flex:none; padding:13px 18px; border-top:1px solid #212D3D; background:#0F1622;"><div style="font:400 10px/1.5 'Space Mono',monospace; color:#5A6A7E;">Method: undersupply × demand growth × access gap, normalized per CSD. Peer-city trend inputs are fixture-backed (labelled).</div></div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ SCREEN 5 : PEOPLE GRAPH ============ -->
+    <sc-if value="{{ isPeople }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="People graph" style="height:100%; display:grid; grid-template-columns:1fr 380px;">
+      <!-- graph canvas -->
+      <div style="position:relative; min-width:0; background:#070b14; overflow:hidden;">
+        {{ peopleGraph }}
+        <div style="position:absolute; left:16px; top:16px; display:flex; flex-direction:column; gap:4px;">
+          <div style="font:700 18px/1 'Space Grotesk'; color:#EAF0F7;">Relationship Graph</div>
+          <div style="font:500 11px/1 'Space Mono',monospace; color:#8595A8;">public professional data only · Louvain communities · centrality sizing</div>
+        </div>
+        <div style="position:absolute; left:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; background:rgba(15,22,34,.85); border:1px solid #2B3A4D; border-radius:9px; padding:11px 13px; backdrop-filter:blur(8px);">
+          <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E;">COMMUNITIES</div>
+          <div style="display:flex; flex-wrap:wrap; gap:11px;">
+            <span style="display:inline-flex; align-items:center; gap:6px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:8px;height:8px;border-radius:50%;background:#38BDF8;"></span>operators</span>
+            <span style="display:inline-flex; align-items:center; gap:6px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:8px;height:8px;border-radius:50%;background:#A78BFA;"></span>investors</span>
+            <span style="display:inline-flex; align-items:center; gap:6px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:8px;height:8px;border-radius:50%;background:#34D399;"></span>press</span>
+            <span style="display:inline-flex; align-items:center; gap:6px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:8px;height:8px;border-radius:50%;background:#F5A524;"></span>civic / regulatory</span>
+          </div>
+          <div style="font:400 9px/1.4 'Space Mono',monospace; color:#5A6A7E;">node size = centrality · no patient, clinical, social or LinkedIn data</div>
+        </div>
+      </div>
+
+      <!-- person inspector -->
+      <aside style="min-height:0; overflow:auto; background:#0F1622; border-left:1px solid #212D3D; padding:18px 17px; display:flex; flex-direction:column; gap:15px;">
+        <div style="display:flex; align-items:center; gap:13px;">
+          <div style="width:48px; height:48px; border-radius:50%; background:rgba(56,189,248,.12); border:2px solid #38BDF8; display:grid; place-items:center; font:700 17px/1 'Space Grotesk'; color:#38BDF8;">OT</div>
+          <div><div style="display:inline-flex; align-items:center; gap:6px; font:700 9px/1 'Space Mono',monospace; letter-spacing:.14em; color:#38BDF8; margin-bottom:6px;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>PERSON · OPERATOR</div><div style="font:700 18px/1 'Space Grotesk'; color:#EAF0F7;">Othership leadership</div></div>
+        </div>
+        <div style="font:500 12px/1.4 'Space Mono',monospace; color:#8595A8;">Founder & operator · contrast-therapy category · Mount Pleasant</div>
+
+        <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:11px; padding:15px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;"><span style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E;">INFLUENCE SCORE</span><span style="font:700 26px/1 'Space Grotesk'; color:#38BDF8;">0.84</span></div>
+          <div style="display:flex; flex-direction:column; gap:8px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;">
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:84px;">centrality</span><div style="flex:1; height:5px; border-radius:3px; background:#0F1622;"><div style="width:88%; height:100%; border-radius:3px; background:#38BDF8;"></div></div><span style="color:#C2CEDB;">0.88</span></div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:84px;">reach</span><div style="flex:1; height:5px; border-radius:3px; background:#0F1622;"><div style="width:79%; height:100%; border-radius:3px; background:#38BDF8;"></div></div><span style="color:#C2CEDB;">0.79</span></div>
+            <div style="display:flex; align-items:center; gap:8px;"><span style="width:84px;">recency</span><div style="flex:1; height:5px; border-radius:3px; background:#0F1622;"><div style="width:81%; height:100%; border-radius:3px; background:#38BDF8;"></div></div><span style="color:#C2CEDB;">0.81</span></div>
+          </div>
+        </div>
+
+        <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:11px; padding:14px;">
+          <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E; margin-bottom:9px;">WHY THIS PERSON APPEARS</div>
+          <div style="font:400 12px/1.55 'Space Grotesk'; color:#A6B0BC;">Connected to 4 recovery operators and 2 investor nodes through public event co-appearances and press mentions. Score is explainable and reversible — <span style="color:#A78BFA;">correction requests</span> are auditable.</div>
+        </div>
+
+        <div style="background:#16202E; border:1px solid #2B3A4D; border-radius:11px; padding:14px;">
+          <div style="font:700 9px/1 'Space Mono',monospace; letter-spacing:.16em; color:#5A6A7E; margin-bottom:10px;">PROVENANCE · 2 SRC</div>
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <div style="display:flex; align-items:center; gap:8px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:7px;height:7px;border-radius:50%;background:#34D399;"></span>Business in Vancouver<span style="margin-left:auto; color:#8595A8;">press</span></div>
+            <div style="display:flex; align-items:center; gap:8px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB;"><span style="width:7px;height:7px;border-radius:50%;background:#F5A524;"></span>Public event listing<span style="margin-left:auto; color:#8595A8;">community</span></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:9px; margin-top:11px;"><span style="font:600 9px/1 'Space Mono',monospace; color:#8595A8;">CONF</span><div style="flex:1; height:6px; border-radius:4px; background:#0F1622; overflow:hidden;"><div style="width:74%; height:100%; background:linear-gradient(90deg,#8c2981,#de4968,#fe9f6d);"></div></div><span style="font:700 11px/1 'Space Mono',monospace; color:#F5A524;">0.74</span></div>
+        </div>
+
+        <div style="display:flex; gap:9px;">
+          <button type="button" onClick="{{ goOperator }}" style="flex:1; font:600 12px/1 'Space Grotesk'; color:#080D18; background:#38BDF8; border:none; border-radius:8px; padding:11px; cursor:pointer;">Linked operator →</button>
+          <button type="button" style="font:600 12px/1 'Space Grotesk'; color:#A78BFA; background:rgba(167,139,250,.1); border:1px solid rgba(167,139,250,.3); border-radius:8px; padding:11px 13px; cursor:pointer;">Flag</button>
+        </div>
+      </aside>
+    </div>
+    </sc-if>
+
+    <!-- ============ SCREEN 6 : CROSS-OBJECT SEARCH ============ -->
+    <sc-if value="{{ isSearch }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Search" style="height:100%; overflow:auto;">
+      <div style="max-width:900px; margin:0 auto; padding:40px 28px 60px; display:flex; flex-direction:column; gap:22px;">
+        <!-- search bar -->
+        <div>
+          <div style="display:flex; align-items:center; gap:12px; height:54px; background:#0F1622; border:1px solid #2B3A4D; border-radius:13px; padding:0 18px; box-shadow:0 0 0 4px rgba(56,189,248,.06);">
+            <svg width="18" height="18" viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="5.5" fill="none" stroke="#38BDF8" stroke-width="1.6"/><line x1="11.6" y1="11.6" x2="16" y2="16" stroke="#38BDF8" stroke-width="1.6"/></svg>
+            <span style="flex:1; font:500 16px/1 'Space Grotesk'; color:#EAF0F7;">cold plunge Mount Pleasant</span>
+            <span style="width:2px; height:22px; background:#38BDF8; animation:wr-pulse 1.4s infinite;"></span>
+            <span style="font:500 10px/1 'Space Mono',monospace; color:#5A6A7E; border:1px solid #2B3A4D; border-radius:4px; padding:3px 6px;">esc</span>
+          </div>
+          <div style="display:flex; gap:7px; margin-top:12px; flex-wrap:wrap;">
+            <span style="font:600 11px/1 'Space Grotesk'; color:#EAF0F7; background:#16202E; border:1px solid #2B3A4D; border-radius:999px; padding:7px 12px;">All <span style="color:#8595A8; font-family:'Space Mono';">38</span></span>
+            <span style="font:600 11px/1 'Space Grotesk'; color:#38BDF8; background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.3); border-radius:999px; padding:7px 12px;">Operators <span style="font-family:'Space Mono';">11</span></span>
+            <span style="font:600 11px/1 'Space Grotesk'; color:#F5A524; background:rgba(245,165,36,.1); border:1px solid rgba(245,165,36,.3); border-radius:999px; padding:7px 12px;">Signals <span style="font-family:'Space Mono';">19</span></span>
+            <span style="font:600 11px/1 'Space Grotesk'; color:#A78BFA; background:rgba(167,139,250,.1); border:1px solid rgba(167,139,250,.3); border-radius:999px; padding:7px 12px;">People <span style="font-family:'Space Mono';">5</span></span>
+            <span style="font:600 11px/1 'Space Grotesk'; color:#34D399; background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.3); border-radius:999px; padding:7px 12px;">Opportunity <span style="font-family:'Space Mono';">3</span></span>
+          </div>
+        </div>
+
+        <!-- operators group -->
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;"><span style="width:8px;height:8px;border-radius:50%;background:#38BDF8;"></span><span style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.16em; color:#8595A8;">OPERATORS</span><div style="flex:1; height:1px; background:#212D3D;"></div></div>
+          <div style="display:flex; flex-direction:column; gap:9px;">
+            <button type="button" onClick="{{ goOperator }}" style="text-align:left; display:flex; align-items:center; gap:14px; background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:14px 16px; cursor:pointer;">
+              <div style="flex:1;"><div style="display:flex; align-items:center; gap:8px;"><span style="font:600 15px/1 'Space Grotesk'; color:#EAF0F7;">Othership — Mount Pleasant</span><span style="font:600 9px/1 'Space Mono',monospace; color:#F5A524; background:rgba(245,165,36,.12); border-radius:4px; padding:3px 6px;">NEW</span></div><div style="font:500 11px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">contrast therapy · 102–1 W 5th Ave</div></div>
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;"><span style="display:inline-flex; align-items:center; gap:5px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:4px 8px;"><span style="width:5px;height:5px;border-radius:50%;background:#38BDF8;"></span>City of Vancouver</span><span style="font:500 10px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#34D399;">0.92</span> · 3h</span></div>
+            </button>
+            <div style="display:flex; align-items:center; gap:14px; background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:14px 16px;">
+              <div style="flex:1;"><div style="font:600 15px/1 'Space Grotesk'; color:#EAF0F7;">Havn Saunas — False Creek</div><div style="font:500 11px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">sauna · contrast · open</div></div>
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;"><span style="display:inline-flex; align-items:center; gap:5px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:4px 8px;"><span style="width:5px;height:5px;border-radius:50%;background:#8595A8;"></span>OSM Overpass</span><span style="font:500 10px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#F5A524;">0.74</span> · 11h</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- signals group -->
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;"><span style="width:8px;height:8px;border-radius:50%;background:#F5A524;"></span><span style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.16em; color:#8595A8;">SIGNALS</span><div style="flex:1; height:1px; background:#212D3D;"></div></div>
+          <button type="button" onClick="{{ goFeed }}" style="width:100%; text-align:left; display:flex; align-items:center; gap:14px; background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:14px 16px; cursor:pointer;">
+            <div style="flex:1;"><div style="font:600 15px/1.3 'Space Grotesk'; color:#EAF0F7;">Othership files second-location permit</div><div style="font:500 11px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">new operator · Mount Pleasant</div></div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;"><span style="display:inline-flex; align-items:center; gap:5px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:4px 8px;"><span style="width:5px;height:5px;border-radius:50%;background:#38BDF8;"></span>City of Vancouver</span><span style="font:500 10px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#34D399;">0.90</span> · 3h</span></div>
+          </button>
+        </div>
+
+        <!-- opportunity group -->
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;"><span style="width:8px;height:8px;border-radius:50%;background:#34D399;"></span><span style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.16em; color:#8595A8;">OPPORTUNITY</span><div style="flex:1; height:1px; background:#212D3D;"></div></div>
+          <button type="button" onClick="{{ goOpportunity }}" style="width:100%; text-align:left; display:flex; align-items:center; gap:14px; background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:14px 16px; cursor:pointer;">
+            <div style="flex:1;"><div style="font:600 15px/1 'Space Grotesk'; color:#EAF0F7;">Mount Pleasant — recovery whitespace</div><div style="font:500 11px/1 'Space Mono',monospace; color:#8595A8; margin-top:6px;">supply 7 · opportunity 0.71</div></div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;"><span style="display:inline-flex; align-items:center; gap:5px; font:500 10px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:4px 8px;"><span style="width:5px;height:5px;border-radius:50%;background:#38BDF8;"></span>StatCan + City</span><span style="font:500 10px/1 'Space Mono',monospace; color:#8595A8;">conf <span style="color:#fe9f6d;">0.81</span> · 6h</span></div>
+          </button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ SCREEN 7 : DESIGN SYSTEM ============ -->
+    <sc-if value="{{ isSystem }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Design system" style="height:100%; overflow:auto;">
+      <div style="max-width:1100px; margin:0 auto; padding:34px 30px 70px; display:flex; flex-direction:column; gap:34px;">
+        <div>
+          <div style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E; margin-bottom:9px;">DESIGN SYSTEM</div>
+          <h1 style="margin:0; font:700 30px/1.05 'Space Grotesk'; color:#EAF0F7; letter-spacing:-.02em;">Luminous — the Wellness Radar instrument system</h1>
+          <p style="margin:8px 0 0; max-width:680px; font:400 14px/1.6 'Space Grotesk'; color:#A6B0BC;">Dark base, per-entity accents, magma data heat. Space Grotesk for interface, Space Mono for every numeric and machine value. Provenance is a first-class component, not a footnote.</p>
+        </div>
+
+        <!-- color -->
+        <section>
+          <div style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.16em; color:#8595A8; margin-bottom:14px;">01 · COLOR TOKENS</div>
+          <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:9px;">SURFACES</div>
+          <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:20px;">
+            <div><div style="height:60px; border-radius:9px; background:#080D18; border:1px solid #212D3D;"></div><div style="font:600 11px/1.3 'Space Mono',monospace; color:#C2CEDB; margin-top:7px;">bg<br><span style="color:#5A6A7E;">#080D18</span></div></div>
+            <div><div style="height:60px; border-radius:9px; background:#0F1622; border:1px solid #212D3D;"></div><div style="font:600 11px/1.3 'Space Mono',monospace; color:#C2CEDB; margin-top:7px;">panel<br><span style="color:#5A6A7E;">#0F1622</span></div></div>
+            <div><div style="height:60px; border-radius:9px; background:#16202E; border:1px solid #212D3D;"></div><div style="font:600 11px/1.3 'Space Mono',monospace; color:#C2CEDB; margin-top:7px;">raised<br><span style="color:#5A6A7E;">#16202E</span></div></div>
+            <div><div style="height:60px; border-radius:9px; background:#212D3D;"></div><div style="font:600 11px/1.3 'Space Mono',monospace; color:#C2CEDB; margin-top:7px;">line<br><span style="color:#5A6A7E;">#212D3D</span></div></div>
+            <div><div style="height:60px; border-radius:9px; background:#2B3A4D;"></div><div style="font:600 11px/1.3 'Space Mono',monospace; color:#C2CEDB; margin-top:7px;">line-2<br><span style="color:#5A6A7E;">#2B3A4D</span></div></div>
+            <div><div style="height:60px; border-radius:9px; background:#EAF0F7;"></div><div style="font:600 11px/1.3 'Space Mono',monospace; color:#C2CEDB; margin-top:7px;">text<br><span style="color:#5A6A7E;">#EAF0F7</span></div></div>
+          </div>
+          <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:9px;">ENTITY ACCENTS</div>
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px;">
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:10px; padding:13px;"><div style="display:flex; align-items:center; gap:9px;"><span style="width:22px;height:22px;border-radius:6px;background:#38BDF8;box-shadow:0 0 10px rgba(56,189,248,.5);"></span><span style="font:600 13px/1 'Space Grotesk'; color:#EAF0F7;">Operator</span></div><div style="font:600 11px/1 'Space Mono',monospace; color:#5A6A7E; margin-top:9px;">#38BDF8</div></div>
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:10px; padding:13px;"><div style="display:flex; align-items:center; gap:9px;"><span style="width:22px;height:22px;border-radius:6px;background:#F5A524;box-shadow:0 0 10px rgba(245,165,36,.5);"></span><span style="font:600 13px/1 'Space Grotesk'; color:#EAF0F7;">Signal</span></div><div style="font:600 11px/1 'Space Mono',monospace; color:#5A6A7E; margin-top:9px;">#F5A524</div></div>
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:10px; padding:13px;"><div style="display:flex; align-items:center; gap:9px;"><span style="width:22px;height:22px;border-radius:6px;background:#A78BFA;box-shadow:0 0 10px rgba(167,139,250,.5);"></span><span style="font:600 13px/1 'Space Grotesk'; color:#EAF0F7;">People</span></div><div style="font:600 11px/1 'Space Mono',monospace; color:#5A6A7E; margin-top:9px;">#A78BFA</div></div>
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:10px; padding:13px;"><div style="display:flex; align-items:center; gap:9px;"><span style="width:22px;height:22px;border-radius:6px;background:#34D399;box-shadow:0 0 10px rgba(52,211,153,.5);"></span><span style="font:600 13px/1 'Space Grotesk'; color:#EAF0F7;">Opportunity</span></div><div style="font:600 11px/1 'Space Mono',monospace; color:#5A6A7E; margin-top:9px;">#34D399</div></div>
+          </div>
+          <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:9px;">DATA HEAT — MAGMA (CONFIDENCE + DENSITY, COLORBLIND-SAFE)</div>
+          <div style="height:30px; border-radius:8px; background:linear-gradient(90deg,#1b0c33,#451077,#8c2981,#de4968,#fe9f6d,#fcfdbf);"></div>
+          <div style="display:flex; justify-content:space-between; font:500 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-top:6px;"><span>0.0 · #1b0c33</span><span>0.5 · #de4968</span><span>1.0 · #fcfdbf</span></div>
+        </section>
+
+        <!-- type -->
+        <section>
+          <div style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.16em; color:#8595A8; margin-bottom:14px;">02 · TYPE SCALE</div>
+          <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:22px; display:flex; flex-direction:column; gap:16px;">
+            <div style="display:flex; align-items:baseline; gap:18px; border-bottom:1px solid #212D3D; padding-bottom:14px;"><span style="font:700 34px/1 'Space Grotesk'; color:#EAF0F7; letter-spacing:-.02em;">Display 34/700</span><span style="font:500 10px/1 'Space Mono',monospace; color:#5A6A7E;">Grotesk · screen titles</span></div>
+            <div style="display:flex; align-items:baseline; gap:18px; border-bottom:1px solid #212D3D; padding-bottom:14px;"><span style="font:700 21px/1 'Space Grotesk'; color:#EAF0F7;">Heading 21/700</span><span style="font:500 10px/1 'Space Mono',monospace; color:#5A6A7E;">entity names</span></div>
+            <div style="display:flex; align-items:baseline; gap:18px; border-bottom:1px solid #212D3D; padding-bottom:14px;"><span style="font:600 15px/1 'Space Grotesk'; color:#EAF0F7;">Body 15/600 · 13/400</span><span style="font:500 10px/1 'Space Mono',monospace; color:#5A6A7E;">cards, descriptions</span></div>
+            <div style="display:flex; align-items:baseline; gap:18px; border-bottom:1px solid #212D3D; padding-bottom:14px;"><span style="font:500 12px/1 'Space Mono',monospace; color:#C2CEDB;">Mono 12/500 — 49.2827°N · conf 0.92 · 3h</span><span style="font:500 10px/1 'Space Mono',monospace; color:#5A6A7E;">all numerics, coords, IDs</span></div>
+            <div style="display:flex; align-items:baseline; gap:18px;"><span style="font:700 10px/1 'Space Mono',monospace; letter-spacing:.2em; color:#5A6A7E;">LABEL 10/700 · .2EM</span><span style="font:500 10px/1 'Space Mono',monospace; color:#5A6A7E;">section eyebrows</span></div>
+          </div>
+        </section>
+
+        <!-- components -->
+        <section>
+          <div style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.16em; color:#8595A8; margin-bottom:14px;">03 · COMPONENT LIBRARY</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <!-- source chip -->
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;">
+              <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:12px;">SOURCE CHIP · 6 TRUST TIERS</div>
+              <div style="display:flex; flex-wrap:wrap; gap:7px;">
+                <span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#38BDF8;"></span>official</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#34D399;"></span>press</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#A78BFA;"></span>commercial</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#F5A524;"></span>community</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#8595A8;"></span>informal</span>
+                <span style="display:inline-flex; align-items:center; gap:6px; font:500 11px/1 'Space Mono',monospace; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:7px; padding:6px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#5A6A7E;"></span>ai_inferred</span>
+              </div>
+            </div>
+            <!-- confidence -->
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;">
+              <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:12px;">CONFIDENCE INDICATOR</div>
+              <div style="display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; align-items:center; gap:9px;"><div style="flex:1; height:7px; border-radius:4px; background:#16202E; overflow:hidden;"><div style="width:92%; height:100%; background:linear-gradient(90deg,#8c2981,#de4968,#fe9f6d);"></div></div><span style="font:700 11px/1 'Space Mono',monospace; color:#fe9f6d;">0.92 high</span></div>
+                <div style="display:flex; align-items:center; gap:9px;"><div style="flex:1; height:7px; border-radius:4px; background:#16202E; overflow:hidden;"><div style="width:66%; height:100%; background:linear-gradient(90deg,#8c2981,#de4968);"></div></div><span style="font:700 11px/1 'Space Mono',monospace; color:#de4968;">0.66 med</span></div>
+                <div style="display:flex; align-items:center; gap:9px;"><div style="flex:1; height:7px; border-radius:4px; background:#16202E; overflow:hidden;"><div style="width:38%; height:100%; background:linear-gradient(90deg,#451077,#8c2981);"></div></div><span style="font:700 11px/1 'Space Mono',monospace; color:#8c2981;">0.38 low</span></div>
+              </div>
+            </div>
+            <!-- feed item -->
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;">
+              <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:12px;">FEED ITEM</div>
+              <div style="background:#16202E; border:1px solid #2B3A4D; border-left:3px solid #F5A524; border-radius:9px; padding:12px;"><div style="display:flex; align-items:center; gap:8px;"><span style="font:700 9px/1 'Space Mono',monospace; color:#F5A524; background:rgba(245,165,36,.12); border-radius:4px; padding:3px 6px;">NEW OPERATOR</span><span style="margin-left:auto; font:500 9px/1 'Space Mono',monospace; color:#8595A8;">3h</span></div><div style="font:600 13px/1.3 'Space Grotesk'; color:#EAF0F7; margin-top:7px;">Othership files 2nd permit</div><div style="font:500 9px/1 'Space Mono',monospace; color:#8595A8; margin-top:7px;">● City of Vancouver · conf 0.90</div></div>
+            </div>
+            <!-- buttons + filters -->
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;">
+              <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:12px;">CONTROLS</div>
+              <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                <span style="font:600 12px/1 'Space Grotesk'; color:#080D18; background:#38BDF8; border-radius:8px; padding:9px 13px;">Primary</span>
+                <span style="font:600 12px/1 'Space Grotesk'; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:8px; padding:9px 13px;">Secondary</span>
+                <span style="font:600 11px/1 'Space Grotesk'; color:#080D18; background:#38BDF8; border-radius:6px; padding:6px 10px;">Chip on</span>
+                <span style="font:500 11px/1 'Space Grotesk'; color:#C2CEDB; background:#16202E; border:1px solid #2B3A4D; border-radius:6px; padding:6px 10px;">Chip off</span>
+              </div>
+              <div style="margin-top:14px;"><div style="position:relative; height:6px; border-radius:4px; background:#16202E;"><div style="position:absolute; left:0; height:100%; width:60%; border-radius:4px; background:#34D399;"></div><div style="position:absolute; left:60%; top:50%; width:14px; height:14px; border-radius:50%; background:#EAF0F7; transform:translate(-50%,-50%); box-shadow:0 0 0 3px #0F1622;"></div></div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- map style + spacing -->
+        <section>
+          <div style="font:700 11px/1 'Space Mono',monospace; letter-spacing:.16em; color:#8595A8; margin-bottom:14px;">04 · MAP STYLE &amp; SPACING TOKENS</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;">
+              <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:12px;">MAP BASEMAP TOKENS</div>
+              <dl style="margin:0; display:grid; grid-template-columns:auto 1fr; gap:9px 14px; font:500 11px/1 'Space Mono',monospace;">
+                <dt style="color:#8595A8;">land</dt><dd style="margin:0; color:#C2CEDB; display:flex; align-items:center; gap:7px;"><span style="width:14px;height:14px;border-radius:3px;background:#0d1320;border:1px solid #212D3D;"></span>#0d1320</dd>
+                <dt style="color:#8595A8;">water</dt><dd style="margin:0; color:#C2CEDB; display:flex; align-items:center; gap:7px;"><span style="width:14px;height:14px;border-radius:3px;background:#070b14;border:1px solid #212D3D;"></span>#070b14</dd>
+                <dt style="color:#8595A8;">graticule</dt><dd style="margin:0; color:#C2CEDB; display:flex; align-items:center; gap:7px;"><span style="width:14px;height:14px;border-radius:3px;background:#1a2436;"></span>#1a2436</dd>
+                <dt style="color:#8595A8;">pin</dt><dd style="margin:0; color:#C2CEDB; display:flex; align-items:center; gap:7px;"><span style="width:14px;height:14px;border-radius:3px;background:#38BDF8;"></span>#38BDF8</dd>
+                <dt style="color:#8595A8;">hexbin r</dt><dd style="margin:0; color:#C2CEDB;">27px · pointy-top H3 proxy</dd>
+              </dl>
+            </div>
+            <div style="background:#0F1622; border:1px solid #212D3D; border-radius:11px; padding:16px;">
+              <div style="font:600 10px/1 'Space Mono',monospace; color:#5A6A7E; margin-bottom:12px;">SPACING &amp; RADIUS</div>
+              <div style="display:flex; align-items:flex-end; gap:10px; margin-bottom:14px;">
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:6px;height:6px;background:#38BDF8;border-radius:2px;"></span><span style="font:500 9px/1 'Space Mono',monospace; color:#5A6A7E;">6</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:10px;height:10px;background:#38BDF8;border-radius:2px;"></span><span style="font:500 9px/1 'Space Mono',monospace; color:#5A6A7E;">10</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:14px;height:14px;background:#38BDF8;border-radius:2px;"></span><span style="font:500 9px/1 'Space Mono',monospace; color:#5A6A7E;">14</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:18px;height:18px;background:#38BDF8;border-radius:2px;"></span><span style="font:500 9px/1 'Space Mono',monospace; color:#5A6A7E;">18</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:22px;height:22px;background:#38BDF8;border-radius:2px;"></span><span style="font:500 9px/1 'Space Mono',monospace; color:#5A6A7E;">22</span></div>
+              </div>
+              <div style="display:flex; gap:10px; font:500 10px/1 'Space Mono',monospace; color:#8595A8;">
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:34px;height:24px;background:#16202E;border:1px solid #2B3A4D;border-radius:6px;"></span>6</div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:34px;height:24px;background:#16202E;border:1px solid #2B3A4D;border-radius:8px;"></span>8</div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:34px;height:24px;background:#16202E;border:1px solid #2B3A4D;border-radius:11px;"></span>11</div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;"><span style="width:34px;height:24px;background:#16202E;border:1px solid #2B3A4D;border-radius:999px;"></span>pill</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- MORE SCREENS -->
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:880}}">
+const h = React.createElement;
+
+function hex2rgb(x){ x=x.replace('#',''); return [parseInt(x.slice(0,2),16),parseInt(x.slice(2,4),16),parseInt(x.slice(4,6),16)]; }
+function rgb2hex(a){ return '#'+a.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
+function ramp(stops,t){
+  t=Math.max(0,Math.min(1,t));
+  const seg=t*(stops.length-1), i=Math.floor(seg), f=seg-i;
+  if(i>=stops.length-1) return stops[stops.length-1];
+  const a=hex2rgb(stops[i]), b=hex2rgb(stops[i+1]);
+  return rgb2hex([a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f]);
+}
+function field(x,y,centers){ let v=0; for(const c of centers){ const dx=(x-c.x)/c.r, dy=(y-c.y)/c.r; v+=c.s*Math.exp(-(dx*dx+dy*dy)); } return v; }
+
+const GEO = {
+  topWater:'M0,0 H1000 V108 C812,166 612,148 430,168 C268,186 132,150 0,176 Z',
+  stanley:'M104,150 C78,120 128,98 174,112 C218,126 222,172 184,190 C152,206 122,180 104,150 Z',
+  falseCreek:'M0,296 C150,292 252,298 324,320 C374,336 374,366 318,380 C244,398 124,400 0,392 Z',
+  fraser:'M0,486 C190,458 372,502 556,492 C724,483 866,518 1000,492 V600 H0 Z',
+  grid:['M120,182 C176,300 196,420 236,560','M360,176 C382,300 360,420 382,560','M600,170 C622,300 600,420 624,560','M820,180 C838,300 824,430 840,560','M0,248 C300,234 700,260 1000,238','M0,408 C300,386 700,414 1000,398']
+};
+const PINS = [
+  {x:150,y:230},{x:232,y:248},{x:300,y:232},{x:380,y:252},{x:462,y:238},{x:540,y:258},{x:620,y:244},{x:700,y:262},{x:780,y:248},{x:862,y:268},
+  {x:200,y:418},{x:300,y:438},{x:420,y:424},{x:520,y:444},{x:640,y:430},{x:760,y:448},{x:840,y:434},
+  {x:330,y:332},{x:500,y:340},{x:680,y:350},{x:160,y:360},
+  {x:432,y:344,sel:true},{x:268,y:300,nw:true},{x:584,y:340,nw:true},{x:724,y:300,nw:true}
+];
+const MAGMA = ['#1b0c33','#451077','#8c2981','#de4968','#fe9f6d','#fcfdbf'];
+const CENTERS_B = [{x:380,y:300,s:1.15,r:152},{x:610,y:240,s:.85,r:122},{x:520,y:440,s:.95,r:132},{x:182,y:330,s:.6,r:92},{x:800,y:420,s:.55,r:110}];
+const THEME_B = { land:'#0d1320', water:'#070b14', grid:'#1a2436', pin:'#38BDF8', accent:'#38BDF8', bg:'#080d18' };
+
+// people graph data
+const GNODES = [
+  {x:250,y:170,r:19,c:'#38BDF8',l:'Othership',big:1},{x:175,y:255,r:11,c:'#38BDF8'},{x:330,y:248,r:12,c:'#38BDF8'},{x:240,y:330,r:9,c:'#38BDF8'},{x:150,y:190,r:8,c:'#38BDF8'},
+  {x:650,y:160,r:17,c:'#A78BFA',l:'Lululemon alumni',big:1},{x:730,y:235,r:11,c:'#A78BFA'},{x:585,y:240,r:9,c:'#A78BFA'},{x:705,y:115,r:9,c:'#A78BFA'},{x:520,y:195,r:10,c:'#A78BFA'},
+  {x:765,y:430,r:15,c:'#34D399',l:'Daily Hive',big:1},{x:845,y:380,r:9,c:'#34D399'},{x:700,y:495,r:8,c:'#34D399'},{x:880,y:470,r:8,c:'#34D399'},
+  {x:345,y:455,r:14,c:'#F5A524',l:'City of Vancouver',big:1},{x:260,y:420,r:8,c:'#F5A524'},{x:425,y:500,r:9,c:'#F5A524'},{x:435,y:400,r:8,c:'#F5A524'},
+  {x:470,y:300,r:11,c:'#34D399',l:'BIV'},{x:560,y:420,r:8,c:'#F5A524'}
+];
+const GEDGES = [[0,1],[0,2],[0,3],[0,4],[1,3],[2,18],[5,6],[5,7],[5,8],[5,9],[7,18],[9,18],[10,11],[10,12],[10,13],[10,18],[14,15],[14,16],[14,17],[14,19],[16,19],[18,5],[18,14],[2,5],[19,10],[8,5]];
+
+class Component extends DCLogic {
+  state = { screen:'console' };
+
+  hexLayer(stops, centers, r, threshold){
+    const W=1000,H=600, hw=Math.sqrt(3)*r, vs=1.5*r, out=[];
+    let row=0;
+    for(let cy=-r; cy<H+r; cy+=vs, row++){
+      const off=(row%2)?hw/2:0;
+      for(let cx=-r+off; cx<W+r; cx+=hw){
+        let v=Math.min(1, field(cx,cy,centers));
+        if(v<threshold) continue;
+        const pts=[];
+        for(let k=0;k<6;k++){ const ang=Math.PI/180*(60*k-90); pts.push((cx+r*Math.cos(ang)).toFixed(1)+','+(cy+r*Math.sin(ang)).toFixed(1)); }
+        out.push(h('polygon',{key:'hx'+cx+'-'+cy, points:pts.join(' '), fill:ramp(stops,v), fillOpacity:(0.16+0.74*v).toFixed(3), stroke:ramp(stops,Math.min(1,v+0.15)), strokeOpacity:0.25, strokeWidth:0.6}));
+      }
+    }
+    return out;
+  }
+
+  mapSVG(opts){
+    const c=opts.theme, showPins=opts.pins!==false, showHex=opts.hex!==false;
+    const water=[GEO.topWater,GEO.falseCreek,GEO.fraser].map((d,i)=>h('path',{key:'w'+i,d,fill:c.water}));
+    const stanley=h('path',{key:'st',d:GEO.stanley,fill:c.water});
+    const grid=GEO.grid.map((d,i)=>h('path',{key:'g'+i,d,fill:'none',stroke:c.grid,strokeWidth:1,strokeOpacity:.55}));
+    const hexes=showHex?this.hexLayer(opts.stops||MAGMA, opts.centers||CENTERS_B, opts.r||27, 0.04):[];
+    const pins=showPins?PINS.map((p,i)=>{
+      const els=[h('circle',{key:'glow',cx:p.x,cy:p.y,r:p.sel?13:9,fill:c.pin,fillOpacity:p.sel?.22:.14})];
+      if(p.sel){
+        els.push(h('circle',{key:'ring',cx:p.x,cy:p.y,r:14,fill:'none',stroke:c.accent,strokeWidth:1.5}));
+        els.push(h('line',{key:'l1',x1:p.x-20,y1:p.y,x2:p.x-15,y2:p.y,stroke:c.accent,strokeWidth:1.3}));
+        els.push(h('line',{key:'l2',x1:p.x+15,y1:p.y,x2:p.x+20,y2:p.y,stroke:c.accent,strokeWidth:1.3}));
+        els.push(h('line',{key:'l3',x1:p.x,y1:p.y-20,x2:p.x,y2:p.y-15,stroke:c.accent,strokeWidth:1.3}));
+        els.push(h('line',{key:'l4',x1:p.x,y1:p.y+15,x2:p.x,y2:p.y+20,stroke:c.accent,strokeWidth:1.3}));
+      }
+      if(p.nw){ els.push(h('circle',{key:'nw',cx:p.x,cy:p.y,r:3.6,fill:c.bg,stroke:c.pin,strokeWidth:1.6})); }
+      else { els.push(h('circle',{key:'dot',cx:p.x,cy:p.y,r:p.sel?3.6:3,fill:c.pin})); }
+      return h('g',{key:'p'+i},els);
+    }):[];
+    return h('svg',{viewBox:'0 0 1000 600', preserveAspectRatio:'xMidYMid slice', style:{width:'100%',height:'100%',display:'block',position:'absolute',inset:0}},
+      [h('rect',{key:'bg',x:0,y:0,width:1000,height:600,fill:c.land}),...grid,...water,stanley,h('g',{key:'hex'},hexes),h('g',{key:'pins'},pins)]);
+  }
+
+  peopleGraphSVG(){
+    const edges=GEDGES.map((e,i)=>{ const a=GNODES[e[0]],b=GNODES[e[1]]; return h('line',{key:'e'+i,x1:a.x,y1:a.y,x2:b.x,y2:b.y,stroke:'#2B3A4D',strokeWidth:1,strokeOpacity:.7}); });
+    const nodes=GNODES.map((n,i)=>{
+      const g=[h('circle',{key:'glow',cx:n.x,cy:n.y,r:n.r+5,fill:n.c,fillOpacity:.12}),
+               h('circle',{key:'c',cx:n.x,cy:n.y,r:n.r,fill:'#0F1622',stroke:n.c,strokeWidth:n.big?2.2:1.6}),
+               h('circle',{key:'d',cx:n.x,cy:n.y,r:n.r*0.42,fill:n.c})];
+      if(n.l){ g.push(h('text',{key:'t',x:n.x,y:n.y-n.r-7,textAnchor:'middle',fill:'#EAF0F7',style:{font:"600 12px 'Space Grotesk',sans-serif"}}, n.l)); }
+      return h('g',{key:'n'+i},g);
+    });
+    return h('svg',{viewBox:'0 0 1000 600', preserveAspectRatio:'xMidYMid meet', style:{width:'100%',height:'100%',display:'block',position:'absolute',inset:0}},
+      [h('g',{key:'edges'},edges),h('g',{key:'nodes'},nodes)]);
+  }
+
+  tabDef(){ return [['console','Console'],['operator','Operators'],['feed','Signals'],['opportunity','Opportunity'],['people','People'],['search','Search'],['system','System']]; }
+
+  renderVals(){
+    const screen=this.state.screen;
+    const go=(id)=>()=>this.setState({screen:id});
+    const tabs=this.tabDef().map(([id,label])=>{
+      const active=screen===id;
+      return { label, onClick:go(id),
+        style:`height:34px; padding:0 14px; border:none; border-radius:8px; cursor:pointer; font:600 12.5px/1 'Space Grotesk',sans-serif; letter-spacing:.01em; background:${active?'#16202E':'transparent'}; color:${active?'#EAF0F7':'#8595A8'}; box-shadow:${active?'inset 0 0 0 1px #2B3A4D':'none'};` };
+    });
+    return {
+      tabs, goSearch:go('search'), goFeed:go('feed'), goOperator:go('operator'), goOpportunity:go('opportunity'), goPeople:go('people'), goConsole:go('console'),
+      isConsole:screen==='console', isOperator:screen==='operator', isFeed:screen==='feed', isOpportunity:screen==='opportunity', isPeople:screen==='people', isSearch:screen==='search', isSystem:screen==='system',
+      mapMain: this.mapSVG({theme:THEME_B}),
+      mapOpp: this.mapSVG({theme:THEME_B, pins:false, centers:[{x:300,y:250,s:1.1,r:130},{x:560,y:320,s:.95,r:140},{x:760,y:250,s:.7,r:110},{x:430,y:460,s:.85,r:120}], r:30}),
+      mapMini: this.mapSVG({theme:THEME_B, hex:false}),
+      peopleGraph: this.peopleGraphSVG()
+    };
+  }
+}
+</script>
+</body>
+</html>
