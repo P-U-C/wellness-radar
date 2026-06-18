@@ -234,6 +234,7 @@ def run_entity_resolution(
             *[_organization_match(row) for row in repo.organization_candidates()],
             *[_person_match(row) for row in repo.person_candidates()],
         ]
+        matches = _dedupe_active_duplicates(matches)
         metrics.records_fetched = len(matches)
         for match in matches:
             repo.upsert_match(match)
@@ -257,6 +258,16 @@ def _operator_match(row: dict[str, Any]) -> EntityMatch:
         provenance=_match_provenance(row, rule),
         source_refs=_unique_refs([*row["a_source_refs"], *row["b_source_refs"]]),
     )
+
+
+def _dedupe_active_duplicates(matches: Iterable[EntityMatch]) -> list[EntityMatch]:
+    by_duplicate: dict[tuple[str, str], EntityMatch] = {}
+    for match in matches:
+        key = (match.entity_type, match.duplicate_id)
+        existing = by_duplicate.get(key)
+        if existing is None or match.confidence_score > existing.confidence_score:
+            by_duplicate[key] = match
+    return list(by_duplicate.values())
 
 
 def _organization_match(row: dict[str, Any]) -> EntityMatch:

@@ -7,6 +7,7 @@ from apps.jobs.analytics.denominators import (
     InMemoryDenominatorRepository,
     run_statcan_denominators,
 )
+from apps.jobs.analytics.entity_resolution import EntityMatch, _dedupe_active_duplicates
 from apps.jobs.analytics.graph import (
     build_graph_rows,
     connected_component_communities,
@@ -70,6 +71,33 @@ def test_opportunity_score_requires_full_component_breakdown() -> None:
         "source_confidence",
     }
     assert components.score() == 0.635
+
+
+def test_entity_resolution_keeps_highest_confidence_active_duplicate() -> None:
+    low = EntityMatch(
+        entity_type="operator",
+        survivor_id="op_a",
+        duplicate_id="op_dup",
+        status="candidate",
+        confidence_score=0.84,
+        deterministic_rule="review",
+        provenance={},
+        source_refs=[],
+    )
+    high = EntityMatch(
+        entity_type="operator",
+        survivor_id="op_b",
+        duplicate_id="op_dup",
+        status="merged",
+        confidence_score=0.97,
+        deterministic_rule="exact",
+        provenance={},
+        source_refs=[],
+    )
+
+    matches = _dedupe_active_duplicates([low, high])
+
+    assert matches == [high]
 
 
 def test_graph_builds_public_affiliation_edges_and_centrality() -> None:

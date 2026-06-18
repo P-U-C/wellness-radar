@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Annotated, Any, cast
 
@@ -7,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from apps.api.app.db.bounds import parse_bbox
 from apps.api.app.db.connection import get_connection
+from apps.api.app.services.freshness import age_hours, iso_or_none
+from apps.api.app.services.metrics import runtime_metrics
 
 router = APIRouter(tags=["signals"])
 
@@ -37,6 +40,8 @@ def _signal_item(row: dict[str, Any]) -> dict[str, Any]:
         if row.get("ai_confidence_score") is not None
         else None,
         "source_refs": row["source_refs"],
+        "freshness_at": iso_or_none(row.get("ingested_at")),
+        "freshness_age_hours": age_hours(row.get("ingested_at")),
     }
 
 
@@ -103,14 +108,17 @@ def list_signals(
         ai_category_suggestions,
         ai_severity_suggestion::text AS ai_severity_suggestion,
         ai_confidence_score,
-        source_refs
+        source_refs,
+        ingested_at
       FROM signal
       WHERE {' AND '.join(clauses)}
       ORDER BY occurred_at DESC, ingested_at DESC
       LIMIT %s
     """
+    start = time.perf_counter()
     with get_connection() as conn:
         rows = cast(list[dict[str, Any]], conn.execute(sql, params).fetchall())
+    runtime_metrics.observe_map_query(duration_ms=(time.perf_counter() - start) * 1000)
     items = [_signal_item(row) for row in rows]
     return {"items": items, "meta": {"count": len(items), "bbox": parsed_bbox}}
 
@@ -144,7 +152,8 @@ def get_signal(signal_id: str) -> dict[str, Any]:
               ai_category_suggestions,
               ai_severity_suggestion::text AS ai_severity_suggestion,
               ai_confidence_score,
-              source_refs
+              source_refs,
+              ingested_at
             FROM signal
             WHERE id = %s
             """,

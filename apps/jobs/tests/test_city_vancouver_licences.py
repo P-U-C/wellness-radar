@@ -122,3 +122,11 @@ def test_runner_upserts_idempotently_and_logs_wa_rejection() -> None:
     assert len(repository.rejected) == 2
     assert repository.source_runs[1]["status"] == "success"
     assert repository.source_runs[2]["status"] == "success"
+    audit_actions = {entry["action"] for entry in repository.audit_logs}
+    assert {
+        "adapter_run_started",
+        "adapter_run_completed",
+        "record_rejected",
+        "source_event_upserted",
+        "signal_upserted",
+    } <= audit_actions

@@ -5,6 +5,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Query
 
 from apps.api.app.db.connection import get_connection
+from apps.api.app.services.freshness import age_hours
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -190,6 +191,8 @@ def _heatmap_item(row: dict[str, Any]) -> dict[str, Any]:
         "confidence_score": float(row["confidence_score"]),
         "trace_payload": row["trace_payload"],
         "generated_at": row["generated_at"].isoformat(),
+        "freshness_at": row["generated_at"].isoformat(),
+        "freshness_age_hours": age_hours(row["generated_at"]),
     }
 
 
@@ -206,6 +209,8 @@ def _scorecard_item(row: dict[str, Any]) -> dict[str, Any]:
         "calculation_method": row["calculation_method"],
         "caveat": row["caveat"],
         "generated_at": row["generated_at"].isoformat(),
+        "freshness_at": row["generated_at"].isoformat(),
+        "freshness_age_hours": age_hours(row["generated_at"]),
     }
 
 
@@ -222,4 +227,6 @@ def _velocity_item(row: dict[str, Any]) -> dict[str, Any]:
         "source_refs": row["source_refs"],
         "confidence_score": float(row["confidence_score"]),
         "calculated_at": row["calculated_at"].isoformat(),
+        "freshness_at": row["calculated_at"].isoformat(),
+        "freshness_age_hours": age_hours(row["calculated_at"]),
     }

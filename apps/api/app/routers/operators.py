@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import time
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Query
 
 from apps.api.app.db.bounds import parse_bbox
 from apps.api.app.db.connection import get_connection
+from apps.api.app.services.freshness import age_hours, iso_or_none
+from apps.api.app.services.metrics import runtime_metrics
 
 router = APIRouter(tags=["operators"])
 
@@ -25,6 +28,8 @@ def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
         "orgbook_id": row.get("orgbook_id"),
         "confidence_score": float(row["confidence_score"]),
         "source_refs": row["source_refs"],
+        "freshness_at": iso_or_none(row.get("last_seen_at")),
+        "freshness_age_hours": age_hours(row.get("last_seen_at")),
     }
 
 
@@ -72,14 +77,17 @@ def list_operators(
         ST_Y(geom::geometry) AS lat,
         ST_X(geom::geometry) AS lng,
         confidence_score,
-        source_refs
+        source_refs,
+        last_seen_at
       FROM "operator"
       WHERE {' AND '.join(clauses)}
       ORDER BY last_seen_at DESC, name ASC
       LIMIT %s
     """
+    start = time.perf_counter()
     with get_connection() as conn:
         rows = cast(list[dict[str, Any]], conn.execute(sql, params).fetchall())
+    runtime_metrics.observe_map_query(duration_ms=(time.perf_counter() - start) * 1000)
     items = [_operator_row(row) for row in rows]
     return {"items": items, "meta": {"count": len(items), "bbox": parsed_bbox}}
 
