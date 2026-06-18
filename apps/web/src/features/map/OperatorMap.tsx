@@ -1,7 +1,7 @@
 import type { Feature, Point } from "geojson";
 import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Map, { Layer, Source, type LayerProps, type MapLayerMouseEvent, type MapRef } from "react-map-gl/maplibre";
 import type { Operator } from "../../lib/api";
 import { BC_BBOX, operatorsToFeatureCollection } from "../../lib/geo";
@@ -104,6 +104,17 @@ export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }:
     [selectedOperatorId]
   );
 
+  useEffect(() => {
+    if (!selectedOperatorId) {
+      return;
+    }
+    const operator = operators.find((item) => item.id === selectedOperatorId);
+    if (!operator) {
+      return;
+    }
+    mapRef.current?.flyTo({ center: [operator.lng, operator.lat], zoom: 13, duration: 650 });
+  }, [operators, selectedOperatorId]);
+
   function handleClick(event: MapLayerMouseEvent) {
     const feature = event.features?.find((item) => item.layer.id === "operator-points") as
       | Feature<Point, { id?: string }>
@@ -111,7 +122,6 @@ export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }:
     if (feature?.properties?.id) {
       const operator = operators.find((item) => item.id === feature.properties?.id);
       if (operator) {
-        mapRef.current?.flyTo({ center: [operator.lng, operator.lat], zoom: 13, duration: 650 });
         onSelectOperator(operator.id);
       }
       return;

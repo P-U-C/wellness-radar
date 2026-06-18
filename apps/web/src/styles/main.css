@@ -152,6 +152,108 @@ select {
   line-height: 1.3;
 }
 
+.sideSection {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #2a2f33;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sectionHeader h2 {
+  margin-bottom: 0;
+}
+
+.sectionHeader span {
+  color: #f2c94c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sectionHeader select {
+  width: 118px;
+  height: 32px;
+  font-size: 12px;
+}
+
+.sourceFreshnessList,
+.peopleList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.freshnessRow,
+.personRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 9px 0;
+  border-bottom: 1px solid #252a2e;
+}
+
+.freshnessRow strong,
+.personRow strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.freshnessRow small,
+.personRow small,
+.personRow span {
+  display: block;
+  color: #a8b0b5;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.statusDot {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.statusDot.fresh {
+  color: #2bd4a7;
+  background: #17342d;
+}
+
+.statusDot.stale {
+  color: #f2c94c;
+  background: #372f17;
+}
+
+.personRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.confidencePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #2bd4a7;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.emptyInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #a8b0b5;
+  font-size: 12px;
+}
+
 .mapStage {
   position: relative;
   min-width: 0;
@@ -250,6 +352,21 @@ select {
   background: transparent;
   color: inherit;
   text-align: left;
+  cursor: pointer;
+}
+
+.cardButton:disabled {
+  cursor: default;
+}
+
+.clearFocus {
+  width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid #343b40;
+  border-radius: 8px;
+  background: #20262a;
+  color: #dce2e4;
+  min-height: 32px;
   cursor: pointer;
 }
 

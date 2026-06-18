@@ -7,15 +7,28 @@ type Props = {
   signals: Signal[];
   selectedOperatorId: string | null;
   onSelectOperator: (operatorId: string) => void;
+  onClearSelection: () => void;
 };
 
-export function SignalFeed({ loading, error, signals, selectedOperatorId, onSelectOperator }: Props) {
+export function SignalFeed({
+  loading,
+  error,
+  signals,
+  selectedOperatorId,
+  onSelectOperator,
+  onClearSelection
+}: Props) {
   return (
     <aside className="feedRail" aria-label="Signal feed">
       <div className="railHeader">
         <h2>Signals</h2>
         <span>{signals.length}</span>
       </div>
+      {selectedOperatorId ? (
+        <button className="clearFocus" type="button" onClick={onClearSelection}>
+          Clear map focus
+        </button>
+      ) : null}
       {loading ? <p className="emptyState">Loading source-backed signals...</p> : null}
       {error ? (
         <p className="errorState">
@@ -36,14 +49,16 @@ export function SignalFeed({ loading, error, signals, selectedOperatorId, onSele
             <button
               type="button"
               className="cardButton"
+              disabled={!signal.related_operator_id}
               onClick={() => signal.related_operator_id && onSelectOperator(signal.related_operator_id)}
             >
               <span className={`severity ${signal.severity}`}>{signal.severity}</span>
               <h3>{signal.title}</h3>
-              <p>{signal.summary}</p>
-              <small>{signal.why_it_matters}</small>
+              {signal.summary ? <p>{signal.summary}</p> : null}
+              {signal.why_it_matters ? <small>{signal.why_it_matters}</small> : null}
               <span className="signalMeta">
                 <MapPin size={14} />
+                {signal.lat !== null && signal.lng !== null ? "Mapped" : "Feed"}
                 {new Date(signal.occurred_at).toLocaleDateString()}
                 <strong>{Math.round(signal.confidence_score * 100)}%</strong>
               </span>

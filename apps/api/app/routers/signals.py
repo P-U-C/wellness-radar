@@ -26,7 +26,16 @@ def _signal_item(row: dict[str, Any]) -> dict[str, Any]:
         "lat": float(row["lat"]) if row["lat"] is not None else None,
         "lng": float(row["lng"]) if row["lng"] is not None else None,
         "related_operator_id": row["related_operator_id"],
+        "related_organization_id": row["related_organization_id"],
         "confidence_score": float(row["confidence_score"]),
+        "ai_generated_fields": row.get("ai_generated_fields", []),
+        "prompt_version": row.get("prompt_version"),
+        "ai_model": row.get("ai_model"),
+        "ai_category_suggestions": row.get("ai_category_suggestions", []),
+        "ai_severity_suggestion": row.get("ai_severity_suggestion"),
+        "ai_confidence_score": float(row["ai_confidence_score"])
+        if row.get("ai_confidence_score") is not None
+        else None,
         "source_refs": row["source_refs"],
     }
 
@@ -46,11 +55,13 @@ def list_signals(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     clauses = [
-        "geom IS NOT NULL",
         """
-        ST_Intersects(
-          geom,
-          ST_MakeEnvelope(%s, %s, %s, %s, 4326)::geography
+        (
+          geom IS NULL
+          OR ST_Intersects(
+            geom,
+            ST_MakeEnvelope(%s, %s, %s, %s, 4326)::geography
+          )
         )
         """,
     ]
@@ -84,7 +95,14 @@ def list_signals(
         ST_Y(geom::geometry) AS lat,
         ST_X(geom::geometry) AS lng,
         related_operator_id,
+        related_organization_id,
         confidence_score,
+        ai_generated_fields,
+        prompt_version,
+        ai_model,
+        ai_category_suggestions,
+        ai_severity_suggestion::text AS ai_severity_suggestion,
+        ai_confidence_score,
         source_refs
       FROM signal
       WHERE {' AND '.join(clauses)}
@@ -118,7 +136,14 @@ def get_signal(signal_id: str) -> dict[str, Any]:
               ST_Y(geom::geometry) AS lat,
               ST_X(geom::geometry) AS lng,
               related_operator_id,
+              related_organization_id,
               confidence_score,
+              ai_generated_fields,
+              prompt_version,
+              ai_model,
+              ai_category_suggestions,
+              ai_severity_suggestion::text AS ai_severity_suggestion,
+              ai_confidence_score,
               source_refs
             FROM signal
             WHERE id = %s

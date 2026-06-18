@@ -1,9 +1,22 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SourceFreshnessPanel } from "../features/admin/SourceFreshnessPanel";
 import { EntityDrawer } from "../features/entities/EntityDrawer";
 import { SignalFeed } from "../features/feed/SignalFeed";
 import { OperatorMap } from "../features/map/OperatorMap";
-import { fetchOperators, fetchSignals, fetchSourceRuns, type Operator, type Signal, type SourceRun } from "../lib/api";
+import { PeopleLeaderboard } from "../features/people/PeopleLeaderboard";
+import {
+  fetchOperators,
+  fetchPeople,
+  fetchSignals,
+  fetchSourceFreshness,
+  fetchSourceRuns,
+  type Operator,
+  type Person,
+  type Signal,
+  type SourceFreshness,
+  type SourceRun
+} from "../lib/api";
 import { isInBcBounds } from "../lib/geo";
 
 const CATEGORIES = [
@@ -20,8 +33,11 @@ export function App() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
+  const [sourceFreshness, setSourceFreshness] = useState<SourceFreshness[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
+  const [peopleSort, setPeopleSort] = useState("confidence");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,20 +45,24 @@ export function App() {
     setLoading(true);
     setError(null);
     try {
-      const [operatorData, signalData, runData] = await Promise.all([
+      const [operatorData, signalData, runData, freshnessData, peopleData] = await Promise.all([
         fetchOperators(category),
         fetchSignals(),
-        fetchSourceRuns()
+        fetchSourceRuns(),
+        fetchSourceFreshness(),
+        fetchPeople(peopleSort)
       ]);
       setOperators(operatorData);
       setSignals(signalData);
       setSourceRuns(runData);
+      setSourceFreshness(freshnessData);
+      setPeople(peopleData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load API data");
     } finally {
       setLoading(false);
     }
-  }, [category]);
+  }, [category, peopleSort]);
 
   useEffect(() => {
     void loadData();
@@ -67,6 +87,15 @@ export function App() {
       .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   }, [signals, visibleOperators]);
 
+  const feedSignals = useMemo(() => {
+    if (!selectedOperatorId) {
+      return visibleSignals;
+    }
+    return visibleSignals.filter(
+      (signal) => !signal.related_operator_id || signal.related_operator_id === selectedOperatorId
+    );
+  }, [selectedOperatorId, visibleSignals]);
+
   const selectedOperator = visibleOperators.find((operator) => operator.id === selectedOperatorId) ?? null;
   const latestRun = sourceRuns[0];
 
@@ -75,7 +104,7 @@ export function App() {
       <header className="topbar">
         <div>
           <h1>Vancouver Wellness Radar</h1>
-          <span className="subtle">City licence vertical slice</span>
+          <span className="subtle">MVP private alpha</span>
         </div>
         <div className="topbarControls">
           <select
@@ -124,9 +153,11 @@ export function App() {
           </div>
           <div className="sourceBox">
             <span>Source</span>
-            <strong>City of Vancouver business licences</strong>
-            <small>Official, daily cadence, rights notes marked needs_review.</small>
+            <strong>M2 sources enabled</strong>
+            <small>OSM, OrgBook, RSS, official feeds, manual seeds, and governed people import.</small>
           </div>
+          <SourceFreshnessPanel sources={sourceFreshness} />
+          <PeopleLeaderboard people={people} sort={peopleSort} onSortChange={setPeopleSort} />
         </aside>
 
         <OperatorMap
@@ -138,9 +169,10 @@ export function App() {
         <SignalFeed
           loading={loading}
           error={error}
-          signals={visibleSignals}
+          signals={feedSignals}
           selectedOperatorId={selectedOperatorId}
           onSelectOperator={setSelectedOperatorId}
+          onClearSelection={() => setSelectedOperatorId(null)}
         />
       </section>
 
