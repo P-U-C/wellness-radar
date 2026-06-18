@@ -1233,7 +1233,14 @@ def main() -> None:
             "orgbook_bc",
             "manual_people_csv",
             "ai_enrichment",
+            "entity_resolution",
+            "statcan_denominators",
+            "opportunity_analytics",
+            "peer_city_trends",
+            "influence_scoring",
+            "people_graph",
             "m2",
+            "m3",
         ],
     )
     parser.add_argument("--limit", type=int, default=100)
@@ -1255,8 +1262,41 @@ def main() -> None:
     if args.adapter == "ai_enrichment":
         print({"enriched": run_ai_enrichment(limit=args.limit)})
         return
+    if args.adapter == "entity_resolution":
+        from apps.jobs.analytics.entity_resolution import run_entity_resolution
+
+        print(_metrics_dict(run_entity_resolution()))
+        return
+    if args.adapter == "statcan_denominators":
+        from apps.jobs.analytics.denominators import run_statcan_denominators
+
+        print(_metrics_dict(run_statcan_denominators()))
+        return
+    if args.adapter == "opportunity_analytics":
+        from apps.jobs.analytics.opportunity import run_opportunity_analytics
+
+        print(_metrics_dict(run_opportunity_analytics()))
+        return
+    if args.adapter == "peer_city_trends":
+        from apps.jobs.analytics.trends import run_peer_city_trends
+
+        print(_metrics_dict(run_peer_city_trends()))
+        return
+    if args.adapter == "people_graph":
+        from apps.jobs.analytics.graph import run_graph_build
+
+        print(_metrics_dict(run_graph_build()))
+        return
+    if args.adapter == "influence_scoring":
+        from apps.jobs.analytics.influence import run_influence_scoring
+
+        print(_metrics_dict(run_influence_scoring()))
+        return
     if args.adapter == "m2":
         print(run_m2_sequence(limit=args.limit, people_csv=args.people_csv))
+        return
+    if args.adapter == "m3":
+        print(run_m3_sequence())
         return
 
     metrics = run_adapter(adapter_for_name(args.adapter, args.limit))
@@ -1293,6 +1333,24 @@ def run_m2_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[st
         lambda: import_people_csv(DatabaseRepository(), path=people_csv)
     )
     results["ai_enrichment"] = _run_safely(lambda: run_ai_enrichment(limit=limit))
+    return results
+
+
+def run_m3_sequence() -> dict[str, Any]:
+    from apps.jobs.analytics.denominators import run_statcan_denominators
+    from apps.jobs.analytics.entity_resolution import run_entity_resolution
+    from apps.jobs.analytics.graph import run_graph_build
+    from apps.jobs.analytics.influence import run_influence_scoring
+    from apps.jobs.analytics.opportunity import run_opportunity_analytics
+    from apps.jobs.analytics.trends import run_peer_city_trends
+
+    results: dict[str, Any] = {}
+    results["entity_resolution"] = _run_safely(run_entity_resolution)
+    results["statcan_denominators"] = _run_safely(run_statcan_denominators)
+    results["opportunity_analytics"] = _run_safely(run_opportunity_analytics)
+    results["peer_city_trends"] = _run_safely(run_peer_city_trends)
+    results["people_graph"] = _run_safely(run_graph_build)
+    results["influence_scoring"] = _run_safely(run_influence_scoring)
     return results
 
 

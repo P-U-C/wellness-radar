@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from apps.jobs.adapters.statcan_wds import StatCanWdsAdapter
+from apps.jobs.analytics.denominators import (
+    InMemoryDenominatorRepository,
+    run_statcan_denominators,
+)
+from apps.jobs.analytics.graph import (
+    build_graph_rows,
+    connected_component_communities,
+    degree_centrality,
+)
+from apps.jobs.analytics.influence import components_for_person, why_person_appears
+from apps.jobs.analytics.opportunity import ScoreComponents
+from apps.jobs.analytics.trends import (
+    FixturePeerCityTrendProvider,
+    InMemoryTrendRepository,
+    run_peer_city_trends,
+)
+
+
+def test_statcan_denominator_adapter_uses_fixture_and_bc_gate() -> None:
+    repository = InMemoryDenominatorRepository()
+    metrics = run_statcan_denominators(StatCanWdsAdapter(), repository)
+
+    assert metrics.records_fetched >= 6
+    assert metrics.records_persisted > metrics.records_fetched
+    assert metrics.records_rejected == 0
+    assert "933" in repository.geographies
+    assert all(denominator.source_refs for denominator in repository.denominators.values())
+    assert any(
+        denominator.metric == "business_count"
+        and denominator.category == "recovery_contrast_therapy"
+        for denominator in repository.denominators.values()
+    )
+
+
+def test_peer_city_trends_fixture_is_stub_backed_and_deterministic() -> None:
+    repository = InMemoryTrendRepository()
+    metrics = run_peer_city_trends(FixturePeerCityTrendProvider(), repository)
+
+    assert metrics.records_fetched == 30
+    assert metrics.records_persisted == 30
+    vancouver_cold_plunge = repository.trends[("cold plunge", "Vancouver")]
+    assert vancouver_cold_plunge.is_stub is True
+    assert vancouver_cold_plunge.growth_class == "breakout"
+    assert vancouver_cold_plunge.series[-1]["value"] == 80
+
+
+def test_opportunity_score_requires_full_component_breakdown() -> None:
+    components = ScoreComponents(
+        demand_proxy=0.8,
+        low_supply_density=0.6,
+        category_growth=0.4,
+        target_demo_fit=0.7,
+        transit_access=0.5,
+        event_community_activity=0.3,
+        source_confidence=0.9,
+    )
+
+    assert set(components.as_dict()) == {
+        "demand_proxy",
+        "low_supply_density",
+        "category_growth",
+        "target_demo_fit",
+        "transit_access",
+        "event_community_activity",
+        "source_confidence",
+    }
+    assert components.score() == 0.635
+
+
+def test_graph_builds_public_affiliation_edges_and_centrality() -> None:
+    source_refs = [
+        {
+            "source_name": "manual_people_csv",
+            "url": "https://example.com",
+            "trust_tier": "informal",
+            "seen_at": "2026-06-18T00:00:00Z",
+            "source_record_id": "fixture",
+            "licence": "fixture",
+        }
+    ]
+    people = [
+        {
+            "id": "person_a",
+            "name": "A Public Operator",
+            "roles": ["Operator"],
+            "affiliations": [{"organization_name": "AetherHaus", "role": "Public operator team"}],
+            "source_refs": source_refs,
+            "confidence_score": 0.8,
+        }
+    ]
+    operators = [
+        {
+            "id": "op_aetherhaus",
+            "name": "AetherHaus",
+            "normalized_name": "aetherhaus",
+            "organization_id": None,
+            "categories": ["recovery_contrast_therapy"],
+            "source_refs": source_refs,
+            "confidence_score": 0.85,
+        }
+    ]
+
+    nodes, edges = build_graph_rows(people, [], operators, [])
+    centrality = degree_centrality(nodes, edges)
+    communities = connected_component_communities(nodes, edges)
+
+    assert len(nodes) == 2
+    assert len(edges) == 1
+    assert edges[0].edge_type == "employee"
+    assert centrality["node_person_person_a"] == 1
+    assert communities["node_person_person_a"] == communities["node_operator_op_aetherhaus"]
+
+
+def test_influence_components_use_public_professional_fields_only() -> None:
+    person = {
+        "id": "person_bonnie_henry",
+        "name": "Dr. Bonnie Henry",
+        "roles": ["Provincial Health Officer"],
+        "affiliations": [
+            {
+                "organization_name": "Government of British Columbia",
+                "role": "Provincial Health Officer",
+            }
+        ],
+        "public_profiles": {"primary": "https://www2.gov.bc.ca/"},
+        "confidence_score": 0.95,
+        "last_seen_at": datetime.now(timezone.utc),
+        "network_centrality": 0.7,
+    }
+
+    components = components_for_person(
+        person=person,
+        media_count=2,
+        media_confidence=0.8,
+        event_count=1,
+    )
+    explanation = why_person_appears(person, components, media_count=2, event_count=1)
+
+    assert components.institutional_authority == 0.95
+    assert components.research_or_clinical_leadership == 0.85
+    assert components.locality_multiplier > 1
+    assert components.final_score() > 0
+    assert "Public professional role" in explanation
