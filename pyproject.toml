@@ -1,0 +1,43 @@
+[project]
+name = "wellness-radar"
+version = "0.1.0"
+description = "Vancouver wellness market-intelligence console"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.135.0",
+  "httpx>=0.28.0",
+  "psycopg[binary]>=3.2.0",
+  "pydantic>=2.12.0",
+  "pydantic-settings>=2.13.0",
+  "uvicorn>=0.44.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=2.1.0",
+  "pytest>=9.0.0",
+  "ruff>=0.15.0",
+]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["apps", "packages"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["node_modules", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+ignore_missing_imports = true
+plugins = []
+exclude = ["node_modules", "dist"]

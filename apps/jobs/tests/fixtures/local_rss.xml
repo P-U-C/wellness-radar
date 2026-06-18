@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Local test feed</title>
+    <item>
+      <guid>dailyhive-vancouver-sauna</guid>
+      <link>https://example.test/vancouver-sauna</link>
+      <title>Vancouver sauna and cold plunge studio opens</title>
+      <description>A new wellness recovery studio has opened in Vancouver, BC.</description>
+      <pubDate>Wed, 17 Jun 2026 10:15:00 -0700</pubDate>
+      <category>Wellness</category>
+    </item>
+    <item>
+      <guid>unrelated</guid>
+      <link>https://example.test/food</link>
+      <title>Restaurant menu changes</title>
+      <description>A restaurant story with menu and patio notes.</description>
+      <pubDate>Wed, 17 Jun 2026 09:00:00 -0700</pubDate>
+    </item>
+  </channel>
+</rss>

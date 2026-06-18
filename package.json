@@ -1,0 +1,12 @@
+{
+  "name": "wellness-radar",
+  "private": true,
+  "packageManager": "pnpm@11.5.1",
+  "scripts": {
+    "lint": "pnpm --filter @wellness-radar/web lint",
+    "typecheck": "pnpm --filter @wellness-radar/web typecheck",
+    "test": "pnpm --filter @wellness-radar/web test",
+    "build": "pnpm --filter @wellness-radar/web build",
+    "dev": "pnpm --filter @wellness-radar/web dev"
+  }
+}

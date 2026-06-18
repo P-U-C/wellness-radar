@@ -1,0 +1,29 @@
+{
+  "total": 2,
+  "results": [
+    {
+      "id": 2381381,
+      "source_id": "BC1334286",
+      "type": "registration.registries.ca",
+      "names": [
+        {"text": "TALITY WELLNESS LTD.", "type": "entity_name"},
+        {"text": "765006101", "type": "business_number"}
+      ],
+      "attributes": [
+        {"type": "entity_status", "value": "ACT"},
+        {"type": "entity_type", "value": "BC"}
+      ],
+      "inactive": false,
+      "revoked": false
+    },
+    {
+      "id": 2034144,
+      "source_id": "FM0715451",
+      "type": "registration.registries.ca",
+      "names": [
+        {"text": "TALITY KOMBUCHA", "type": "entity_name"}
+      ],
+      "attributes": []
+    }
+  ]
+}
