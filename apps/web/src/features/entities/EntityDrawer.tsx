@@ -42,12 +42,12 @@ export function EntityDrawer({
           </div>
           <h2>{operator.name}</h2>
           <p>
-            {operator.neighborhood ?? operator.municipality ?? "Metro Vancouver"} ·{" "}
-            {operator.categories.slice(0, 2).map(sentenceCase).join(" · ")}
+            {operator.neighborhood ?? operator.municipality ?? "Metro Vancouver"} /{" "}
+            {operator.categories.slice(0, 2).map(sentenceCase).join(" / ")}
           </p>
         </div>
         <button className="wr-open-record" type="button" onClick={() => onOpenOperator(operator.id)}>
-          OPEN ↗
+          OPEN
         </button>
       </div>
 
@@ -77,7 +77,7 @@ export function EntityDrawer({
               <div>
                 <strong>{signal.title}</strong>
                 <small>
-                  {signal.source_name} · {formatAgeFromHours(signal.freshness_age_hours)}
+                  {signal.source_name} / {formatAgeFromHours(signal.freshness_age_hours)}
                 </small>
               </div>
             </article>
@@ -94,7 +94,7 @@ export function EntityDrawer({
               <span />
               <div>
                 <strong>{nearby.name}</strong>
-                <small>{nearby.status} · same neighborhood</small>
+                <small>{nearby.status} / same neighborhood</small>
               </div>
             </article>
           ))}

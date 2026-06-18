@@ -2,6 +2,7 @@ import { Hexagon, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LayerToggle, RangeSlider } from "../components";
 import { EntityDrawer } from "../features/entities/EntityDrawer";
+import { OperatorDetail } from "../features/entities/OperatorDetail";
 import { SignalFeed } from "../features/feed/SignalFeed";
 import { KioskMode } from "../features/kiosk/KioskMode";
 import { OperatorMap, type MapLayers } from "../features/map/OperatorMap";
@@ -234,6 +235,29 @@ export function App() {
   }, [selectedOperatorId, visibleSignals]);
 
   const selectedOperator = visibleOperators.find((operator) => operator.id === selectedOperatorId) ?? null;
+  const detailOperators = useMemo(
+    () =>
+      operators.filter(
+        (operator) =>
+          operator.source_refs.length > 0 &&
+          isInBcBounds(operator.lat, operator.lng) &&
+          (category === "all" || operator.categories.includes(category))
+      ),
+    [category, operators]
+  );
+  const routedOperator = route.operatorId
+    ? operators.find((operator) => operator.id === route.operatorId) ?? null
+    : null;
+  const detailOperator =
+    routedOperator ??
+    detailOperators.find((operator) => operator.id === selectedOperatorId) ??
+    detailOperators[0] ??
+    null;
+  const detailSignals = detailOperator
+    ? signals
+        .filter((signal) => signal.related_operator_id === detailOperator.id)
+        .filter((signal) => signal.source_refs.length > 0)
+    : [];
   const selectedOperatorSignals = selectedOperator
     ? visibleSignals.filter((signal) => signal.related_operator_id === selectedOperator.id)
     : [];
@@ -408,7 +432,7 @@ export function App() {
                   </div>
                 </section>
 
-                <RangeSlider label="OPPORTUNITY ≥" value={minOpportunity} onChange={setMinOpportunity} />
+                <RangeSlider label="OPPORTUNITY >=" value={minOpportunity} onChange={setMinOpportunity} />
                 <RangeSlider label="MIN CONFIDENCE" value={minConfidence} color="ok" onChange={setMinConfidence} />
 
                 <VelocityCard velocity={velocityItem} />
@@ -461,6 +485,20 @@ export function App() {
               onViewAll={() => navigate("/signals")}
             />
           </div>
+        ) : screen === "operator" ? (
+          <OperatorDetail
+            operator={detailOperator}
+            operators={detailOperators}
+            signals={detailSignals}
+            heatmapCells={heatmapCells}
+            velocity={velocity}
+            onBack={() => navigate("/")}
+            onViewMap={(operatorId) => {
+              setSelectedOperatorId(operatorId);
+              setSelectedSignalId(null);
+              navigate("/");
+            }}
+          />
         ) : (
           <DeferredScreen
             screen={screen}
@@ -490,7 +528,7 @@ function VelocityCard({ velocity }: { velocity: CategoryVelocity | null }) {
 
   return (
     <section className="wr-rail-card">
-      <h2>CATEGORY VELOCITY · 90D</h2>
+      <h2>CATEGORY VELOCITY / 90D</h2>
       <strong>{label}</strong>
       <Sparkline values={sparkValues} />
     </section>

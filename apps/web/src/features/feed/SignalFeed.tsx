@@ -29,9 +29,9 @@ export function SignalFeed({
   return (
     <aside className="wr-feed-strip" aria-label="Signal feed">
       <div className="wr-feed-head">
-        <span>SIGNAL FEED · LAST 24H</span>
+        <span>SIGNAL FEED / LAST 24H</span>
         <button type="button" onClick={onViewAll}>
-          view all ↗
+          view all
         </button>
         {selectedOperatorId ? (
           <button type="button" onClick={onClearSelection}>

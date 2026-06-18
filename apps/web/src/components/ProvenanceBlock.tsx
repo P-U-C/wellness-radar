@@ -22,7 +22,7 @@ export function ProvenanceBlock({
     `${independentCount} independent ${independentCount === 1 ? "source" : "sources"}`,
     hasOfficial ? "official source present" : "non-official corroboration",
     "BC-gated"
-  ].join(" · ");
+  ].join(" / ");
 
   return (
     <section className="wr-provenance" aria-label="Provenance">

@@ -26,6 +26,7 @@ type Props = {
   selectedOperatorId: string | null;
   selectedSignalId?: string | null;
   layers?: MapLayers;
+  chrome?: boolean;
   onSelectOperator: (operatorId: string) => void;
   onSelectSignal?: (signalId: string) => void;
 };
@@ -176,6 +177,7 @@ export function OperatorMap({
   selectedOperatorId,
   selectedSignalId = null,
   layers = emptyLayers,
+  chrome = true,
   onSelectOperator,
   onSelectSignal
 }: Props) {
@@ -258,7 +260,7 @@ export function OperatorMap({
   ].filter(Boolean) as string[];
 
   return (
-    <section className="wr-map-stage mapStage" aria-label="Operator map">
+    <section className={`wr-map-stage mapStage${chrome ? "" : " is-compact"}`} aria-label="Operator map">
       <Map
         ref={mapRef}
         mapLib={maplibregl}
@@ -300,35 +302,41 @@ export function OperatorMap({
         ) : null}
       </Map>
       <div className="wr-map-grain" aria-hidden />
-      <div className="wr-map-legend">
-        <span>SIGNAL DENSITY · H3 HEXBIN</span>
-        <div>
-          <i />
-          <b>low to high</b>
-        </div>
-        <p>
-          <span className="wr-pin-key" /> operator
-          <span className="wr-pin-key is-new" /> new
-        </p>
-      </div>
-      <div className="wr-zoom-control" aria-label="Map zoom controls">
-        <button type="button" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in">
-          +
-        </button>
-        <button type="button" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out">
-          -
-        </button>
-      </div>
+      {chrome ? (
+        <>
+          <div className="wr-map-legend">
+            <span>SIGNAL DENSITY / H3 HEXBIN</span>
+            <div>
+              <i />
+              <b>low to high</b>
+            </div>
+            <p>
+              <span className="wr-pin-key" /> operator
+              <span className="wr-pin-key is-new" /> new
+            </p>
+          </div>
+          <div className="wr-zoom-control" aria-label="Map zoom controls">
+            <button type="button" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in">
+              +
+            </button>
+            <button type="button" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out">
+              -
+            </button>
+          </div>
+        </>
+      ) : null}
       {inspectedOperator && !selectedOperatorId ? (
         <div className="wr-map-hover" aria-live="polite">
           <strong>{inspectedOperator.name}</strong>
           <span>{inspectedOperator.neighborhood ?? inspectedOperator.municipality ?? "Metro Vancouver"}</span>
         </div>
       ) : null}
-      <div className="wr-map-label" aria-hidden>
-        <span>METRO VANCOUVER</span>
-        <b style={{ color: text.muted }}>LIVE MAPLIBRE</b>
-      </div>
+      {chrome ? (
+        <div className="wr-map-label" aria-hidden>
+          <span>METRO VANCOUVER</span>
+          <b style={{ color: text.muted }}>LIVE MAPLIBRE</b>
+        </div>
+      ) : null}
     </section>
   );
 }
