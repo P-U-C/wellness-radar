@@ -23,6 +23,9 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/wellness_radar
       API_HOST: 0.0.0.0
       API_PORT: 8000
+      API_VIEWER_TOKEN: local-viewer-token
+      API_ANALYST_TOKEN: local-analyst-token
+      API_ADMIN_TOKEN: local-admin-token
     command: ["sh", "-c", "python -m db.migrate && uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8000"]
     ports:
       - "8000:8000"
@@ -52,6 +55,7 @@ services:
       dockerfile: infra/docker/web.Dockerfile
     environment:
       VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_AUTH_TOKEN: local-analyst-token
     command: ["pnpm", "--filter", "@wellness-radar/web", "dev", "--host", "0.0.0.0"]
     ports:
       - "5173:5173"

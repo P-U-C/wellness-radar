@@ -2,4 +2,5 @@ packages/geo/** @P-U-C/wellness-radar
 db/migrations/** @P-U-C/wellness-radar
 apps/jobs/adapters/** @P-U-C/wellness-radar
 .github/workflows/** @P-U-C/wellness-radar
+infra/github/workflows/** @P-U-C/wellness-radar
 CLAUDE.md @P-U-C/wellness-radar
