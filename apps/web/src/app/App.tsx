@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { LayerToggle, RangeSlider } from "../components";
 import { EntityDrawer } from "../features/entities/EntityDrawer";
 import { OperatorDetail } from "../features/entities/OperatorDetail";
+import { OpportunityPanel } from "../features/analytics/OpportunityPanel";
 import { SignalFeed } from "../features/feed/SignalFeed";
 import { KioskMode } from "../features/kiosk/KioskMode";
 import { OperatorMap, type MapLayers } from "../features/map/OperatorMap";
@@ -31,7 +32,7 @@ import {
   type SourceRun,
   type TrendTile
 } from "../lib/api";
-import { formatAgeFromHours } from "../lib/format";
+import { formatAgeFromHours, formatScore, sentenceCase } from "../lib/format";
 import { isInBcBounds } from "../lib/geo";
 
 const CATEGORIES = [
@@ -218,6 +219,14 @@ export function App() {
         .filter((cell) => cell.confidence_score >= minConfidence)
         .sort((a, b) => b.opportunity_score - a.opportunity_score),
     [heatmapCells, minConfidence, minOpportunity]
+  );
+  const visibleScorecards = useMemo(
+    () =>
+      scorecards
+        .filter((scorecard) => scorecard.opportunity_score >= minOpportunity)
+        .filter((scorecard) => scorecard.confidence_score >= minConfidence)
+        .sort((a, b) => b.opportunity_score - a.opportunity_score),
+    [minConfidence, minOpportunity, scorecards]
   );
 
   const visibleSignals = useMemo(() => {
@@ -536,6 +545,54 @@ export function App() {
             onViewAll={() => undefined}
             onOpenOperator={openOperator}
           />
+        ) : screen === "opportunity" ? (
+          <div className="wr-opportunity-screen">
+            <section className="wr-opportunity-map" aria-label="Opportunity hexbin map">
+              <OperatorMap
+                operators={[]}
+                heatmapCells={visibleHeatmapCells}
+                signals={[]}
+                selectedOperatorId={null}
+                layers={{ operators: false, signals: false, people: false, opportunity: true }}
+                chrome={false}
+                onSelectOperator={() => undefined}
+              />
+              <div className="wr-opportunity-title">
+                <h1>Opportunity Surface</h1>
+                <span>{sentenceCase(activeAnalyticsCategory(category))} / supply-demand whitespace</span>
+              </div>
+              <div className="wr-opportunity-categories" aria-label="Opportunity category">
+                {CATEGORIES.filter((item) => item.value !== "all").slice(0, 5).map((item) => {
+                  const active = item.value === activeAnalyticsCategory(category);
+                  return (
+                    <button
+                      key={item.value}
+                      className={active ? "is-active" : ""}
+                      type="button"
+                      onClick={() => setCategory(item.value)}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {visibleHeatmapCells[0] ? <OpportunityCallout cell={visibleHeatmapCells[0]} /> : null}
+              <div className="wr-opportunity-legend">
+                <span>OPPORTUNITY SCORE / H3 HEXBIN</span>
+                <div>
+                  <i />
+                  <b>0 to 1</b>
+                </div>
+                <p>supply-demand signal, not guaranteed attractiveness</p>
+              </div>
+            </section>
+            <OpportunityPanel
+              scorecards={visibleScorecards}
+              heatmapCells={visibleHeatmapCells}
+              velocity={velocity}
+              trends={trends}
+            />
+          </div>
         ) : (
           <DeferredScreen
             screen={screen}
@@ -609,6 +666,22 @@ function FreshnessCard({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function OpportunityCallout({ cell }: { cell: OpportunityHeatmapCell }) {
+  return (
+    <aside className="wr-opportunity-callout" aria-label="Hottest opportunity cell">
+      <div>
+        <strong>{cell.geo_name}</strong>
+        <b>{formatScore(cell.opportunity_score)}</b>
+      </div>
+      <span>
+        {cell.supply_count} operators / {formatPopulation(cell.population)} pop
+        <br />
+        demand &gt;&gt; supply
+      </span>
+    </aside>
   );
 }
 
@@ -757,6 +830,20 @@ function formatVelocity(velocity: CategoryVelocity | null): string {
     velocity.event_velocity_count +
     velocity.news_velocity_count;
   return `+${total}`;
+}
+
+function activeAnalyticsCategory(category: string): string {
+  return category === "all" ? "recovery_contrast_therapy" : category;
+}
+
+function formatPopulation(value: number | null): string {
+  if (value === null) {
+    return "n/a";
+  }
+  if (value >= 1000) {
+    return `${Math.round(value / 1000)}k`;
+  }
+  return String(Math.round(value));
 }
 
 function formatClock(value: Date): string {

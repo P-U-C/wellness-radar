@@ -6,7 +6,7 @@ import Map, { Layer, Source, type LayerProps, type MapLayerMouseEvent, type MapR
 import type { Operator, OpportunityHeatmapCell, Signal } from "../../lib/api";
 import {
   BC_BBOX,
-  heatmapToFeatureCollection,
+  heatmapToHexbinFeatureCollection,
   operatorsToFeatureCollection,
   signalsToFeatureCollection
 } from "../../lib/geo";
@@ -117,11 +117,11 @@ const selectedLayer: LayerProps = {
   }
 };
 
-const heatmapLayer: LayerProps = {
-  id: "whitespace-cells",
-  type: "circle",
+const heatmapFillLayer: LayerProps = {
+  id: "whitespace-hex-fills",
+  type: "fill",
   paint: {
-    "circle-color": [
+    "fill-color": [
       "interpolate",
       ["linear"],
       ["get", "score"],
@@ -138,11 +138,27 @@ const heatmapLayer: LayerProps = {
       1,
       MAGMA[5]
     ],
-    "circle-radius": ["interpolate", ["linear"], ["get", "score"], 0.2, 16, 0.9, 48],
-    "circle-opacity": ["interpolate", ["linear"], ["get", "score"], 0, 0.16, 1, 0.78],
-    "circle-stroke-color": MAGMA[5],
-    "circle-stroke-opacity": luminousMapStyle.hexStrokeOpacity,
-    "circle-stroke-width": 0.7
+    "fill-opacity": ["interpolate", ["linear"], ["get", "score"], 0, 0.16, 1, 0.9]
+  }
+};
+
+const heatmapLineLayer: LayerProps = {
+  id: "whitespace-hex-lines",
+  type: "line",
+  paint: {
+    "line-color": [
+      "interpolate",
+      ["linear"],
+      ["get", "score"],
+      0,
+      MAGMA[1],
+      0.6,
+      MAGMA[3],
+      1,
+      MAGMA[5]
+    ],
+    "line-opacity": luminousMapStyle.hexStrokeOpacity,
+    "line-width": 0.7
   }
 };
 
@@ -184,7 +200,7 @@ export function OperatorMap({
   const mapRef = useRef<MapRef | null>(null);
   const [hoveredOperatorId, setHoveredOperatorId] = useState<string | null>(null);
   const operatorData = useMemo(() => operatorsToFeatureCollection(operators), [operators]);
-  const heatmapData = useMemo(() => heatmapToFeatureCollection(heatmapCells), [heatmapCells]);
+  const heatmapData = useMemo(() => heatmapToHexbinFeatureCollection(heatmapCells), [heatmapCells]);
   const signalData = useMemo(() => signalsToFeatureCollection(signals), [signals]);
   const inspectedOperator =
     operators.find((item) => item.id === (selectedOperatorId ?? hoveredOperatorId)) ?? null;
@@ -283,7 +299,8 @@ export function OperatorMap({
       >
         {layers.opportunity ? (
           <Source id="whitespace" type="geojson" data={heatmapData}>
-            <Layer {...heatmapLayer} />
+            <Layer {...heatmapFillLayer} />
+            <Layer {...heatmapLineLayer} />
           </Source>
         ) : null}
         {layers.signals ? (
