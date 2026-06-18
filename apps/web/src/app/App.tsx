@@ -5,8 +5,10 @@ import { EntityDrawer } from "../features/entities/EntityDrawer";
 import { OperatorDetail } from "../features/entities/OperatorDetail";
 import { OpportunityPanel } from "../features/analytics/OpportunityPanel";
 import { SignalFeed } from "../features/feed/SignalFeed";
+import { PeopleGraph } from "../features/graph/PeopleGraph";
 import { KioskMode } from "../features/kiosk/KioskMode";
 import { OperatorMap, type MapLayers } from "../features/map/OperatorMap";
+import { PeopleLeaderboard } from "../features/people/PeopleLeaderboard";
 import {
   fetchCategoryVelocity,
   fetchObservability,
@@ -79,6 +81,7 @@ export function App() {
   const [observability, setObservability] = useState<ObservabilitySummary | null>(null);
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
   const [peopleSort] = useState("influence");
   const [minConfidence, setMinConfidence] = useState(0.6);
@@ -193,6 +196,7 @@ export function App() {
         } else {
           setSelectedOperatorId(null);
           setSelectedSignalId(null);
+          setSelectedGraphNodeId(null);
         }
       }
     }
@@ -591,6 +595,23 @@ export function App() {
               heatmapCells={visibleHeatmapCells}
               velocity={velocity}
               trends={trends}
+            />
+          </div>
+        ) : screen === "people" ? (
+          <div className="wr-people-screen">
+            <PeopleGraph
+              nodes={graphNodes}
+              edges={graphEdges}
+              selectedNodeId={selectedGraphNodeId}
+              onSelectNode={setSelectedGraphNodeId}
+            />
+            <PeopleLeaderboard
+              people={people}
+              operators={operators}
+              graphNodes={graphNodes}
+              selectedNodeId={selectedGraphNodeId}
+              onSelectNode={setSelectedGraphNodeId}
+              onOpenOperator={openOperator}
             />
           </div>
         ) : (

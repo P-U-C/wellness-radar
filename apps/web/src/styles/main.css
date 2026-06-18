@@ -1814,6 +1814,315 @@ select:focus-visible {
   color: var(--wr-warn);
 }
 
+.wr-people-screen {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  background: var(--wr-bg);
+}
+
+.wr-people-graph {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 28% 32%, rgba(56,189,248,.08), transparent 24%),
+    radial-gradient(circle at 72% 68%, rgba(167,139,250,.08), transparent 24%),
+    #070b14;
+}
+
+.wr-people-graph-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.wr-people-graph-canvas canvas {
+  filter: drop-shadow(0 0 10px rgba(56,189,248,.14));
+}
+
+.wr-people-graph-canvas .emptyInline {
+  position: absolute;
+  inset: 0;
+  justify-content: center;
+}
+
+.wr-people-title {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  display: grid;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.wr-people-title h1 {
+  margin: 0;
+  color: var(--wr-text);
+  font: 700 18px/1 var(--wr-font-ui);
+}
+
+.wr-people-title span {
+  color: var(--wr-muted);
+  font: 500 11px/1 var(--wr-font-mono);
+}
+
+.wr-community-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: grid;
+  gap: 8px;
+  max-width: min(560px, calc(100% - 32px));
+  padding: 11px 13px;
+  border: 1px solid var(--wr-line-2);
+  border-radius: 9px;
+  background: rgba(15,22,34,.85);
+  backdrop-filter: blur(8px);
+}
+
+.wr-community-legend strong,
+.wr-public-list h3,
+.wr-why-card h3 {
+  margin: 0;
+  color: var(--wr-faint);
+  font: 700 9px/1 var(--wr-font-mono);
+  letter-spacing: .16em;
+}
+
+.wr-community-legend div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 11px;
+}
+
+.wr-community-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--wr-text-dim);
+  font: 500 10px/1 var(--wr-font-mono);
+}
+
+.wr-community-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.wr-community-legend p {
+  margin: 0;
+  color: var(--wr-faint);
+  font: 400 9px/1.4 var(--wr-font-mono);
+}
+
+.wr-graph-selection {
+  pointer-events: none;
+  position: absolute;
+  inset: 18px;
+  border: 1px solid rgba(167,139,250,.16);
+  border-radius: var(--wr-r-lg);
+}
+
+.wr-people-inspector {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 18px 17px;
+  border-left: 1px solid var(--wr-line);
+  background: var(--wr-panel);
+}
+
+.wr-person-head {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.wr-person-avatar {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--wr-operator);
+  border-radius: 50%;
+  background: var(--wr-operator-soft);
+  color: var(--wr-operator);
+  font: 700 17px/1 var(--wr-font-ui);
+}
+
+.wr-person-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--wr-operator);
+  font: 700 9px/1 var(--wr-font-mono);
+  letter-spacing: .14em;
+}
+
+.wr-person-head i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wr-operator);
+}
+
+.wr-person-head h2 {
+  margin: 0;
+  color: var(--wr-text);
+  font: 700 18px/1.15 var(--wr-font-ui);
+}
+
+.wr-person-role {
+  margin: 0;
+  color: var(--wr-muted);
+  font: 500 12px/1.4 var(--wr-font-mono);
+}
+
+.wr-influence-card,
+.wr-why-card {
+  display: grid;
+  gap: 10px;
+  padding: 15px;
+  border: 1px solid var(--wr-line-2);
+  border-radius: var(--wr-r-lg);
+  background: var(--wr-raised);
+}
+
+.wr-influence-card > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.wr-influence-card > div:first-child span {
+  color: var(--wr-faint);
+  font: 700 9px/1 var(--wr-font-mono);
+  letter-spacing: .16em;
+}
+
+.wr-influence-card > div:first-child strong {
+  color: var(--wr-operator);
+  font: 700 26px/1 var(--wr-font-ui);
+}
+
+.wr-component-bar {
+  display: grid;
+  grid-template-columns: 84px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+  color: var(--wr-muted);
+  font: 500 10px/1 var(--wr-font-mono);
+}
+
+.wr-component-bar div {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--wr-panel);
+}
+
+.wr-component-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--wr-operator);
+}
+
+.wr-component-bar b {
+  color: var(--wr-text-dim);
+  font: 600 10px/1 var(--wr-font-mono);
+  text-align: right;
+}
+
+.wr-why-card p {
+  margin: 0;
+  color: var(--wr-text-body);
+  font: 400 12px/1.55 var(--wr-font-ui);
+}
+
+.wr-why-card span {
+  color: var(--wr-people);
+}
+
+.wr-person-actions {
+  display: flex;
+  gap: 9px;
+}
+
+.wr-person-actions button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: var(--wr-r-md);
+  cursor: pointer;
+  font: 600 12px/1 var(--wr-font-ui);
+}
+
+.wr-person-actions button:first-child {
+  flex: 1;
+  border: 0;
+  background: var(--wr-operator);
+  color: var(--wr-bg);
+}
+
+.wr-person-actions button:first-child:disabled {
+  cursor: not-allowed;
+  opacity: .62;
+}
+
+.wr-person-actions button:last-child {
+  border: 1px solid var(--wr-people-border);
+  background: var(--wr-people-soft);
+  color: var(--wr-people);
+}
+
+.wr-public-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.wr-public-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--wr-line-2);
+  border-radius: var(--wr-r-md);
+  background: var(--wr-raised);
+  color: var(--wr-text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.wr-public-list button.is-active {
+  border-color: var(--wr-people-border);
+  background: var(--wr-people-soft);
+}
+
+.wr-public-list span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font: 600 12px/1.2 var(--wr-font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wr-public-list b {
+  font: 700 11px/1 var(--wr-font-mono);
+}
+
 .wr-operator-detail {
   height: 100%;
   max-width: 1180px;
@@ -3195,6 +3504,17 @@ a {
     border-left: 0;
     border-top: 1px solid var(--wr-line);
   }
+
+  .wr-people-screen {
+    min-height: 1040px;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(520px, 58vh) auto;
+  }
+
+  .wr-people-inspector {
+    border-left: 0;
+    border-top: 1px solid var(--wr-line);
+  }
 }
 
 @media (max-width: 640px) {
@@ -3261,6 +3581,14 @@ a {
 
   .wr-opportunity-legend {
     right: 16px;
+  }
+
+  .wr-community-legend {
+    right: 16px;
+  }
+
+  .wr-person-actions {
+    flex-direction: column;
   }
 }
 
