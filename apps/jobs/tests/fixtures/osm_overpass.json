@@ -1,0 +1,48 @@
+{
+  "elements": [
+    {
+      "type": "node",
+      "id": 10555619247,
+      "lat": 49.2202925,
+      "lon": -122.9289587,
+      "tags": {
+        "addr:housenumber": "7818",
+        "addr:province": "BC",
+        "addr:street": "6th Street",
+        "addr:unit": "100",
+        "leisure": "sauna",
+        "name": "Art of Sauna",
+        "website": "https://artofsauna.ca/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12092624727,
+      "lat": 49.2869063,
+      "lon": -123.1415786,
+      "tags": {
+        "addr:city": "Vancouver",
+        "addr:housenumber": "1768",
+        "addr:postcode": "V6G 1W5",
+        "addr:province": "BC",
+        "addr:street": "Davie Street",
+        "leisure": "sauna",
+        "name": "AetherHaus",
+        "website": "https://www.aetherhaus.ca/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 98660,
+      "lat": 45.6387,
+      "lon": -122.6615,
+      "tags": {
+        "addr:city": "Vancouver",
+        "addr:postcode": "98660",
+        "addr:province": "WA",
+        "leisure": "sauna",
+        "name": "Vancouver WA Sauna"
+      }
+    }
+  ]
+}

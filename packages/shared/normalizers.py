@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from html import unescape
 
 STATUS_MAP = {
     "issued": "open",
@@ -52,6 +53,24 @@ def normalize_name(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+def normalize_legal_name(value: str) -> str:
+    normalized = normalize_name(value)
+    suffixes = {
+        "bc",
+        "co",
+        "company",
+        "corp",
+        "corporation",
+        "inc",
+        "incorporated",
+        "limited",
+        "ltd",
+        "ulc",
+    }
+    words = [word for word in normalized.split() if word not in suffixes]
+    return " ".join(words)
+
+
 def normalize_status(value: str | None) -> str:
     if not value:
         return "unknown"
@@ -74,3 +93,17 @@ def compact_address(*parts: str | None) -> str | None:
     if not cleaned:
         return None
     return ", ".join(cleaned)
+
+
+def strip_html(value: str | None) -> str:
+    if not value:
+        return ""
+    without_tags = re.sub(r"<[^>]+>", " ", value)
+    return re.sub(r"\s+", " ", unescape(without_tags)).strip()
+
+
+def truncate_text(value: str, max_len: int = 280) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 1].rstrip() + "..."

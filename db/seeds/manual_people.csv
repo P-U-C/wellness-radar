@@ -1,0 +1,7 @@
+name,roles,affiliation_name,affiliation_role,confidence_score,source_name,source_url,source_record_id
+Josie Osborne,Minister of Health,Government of British Columbia,Minister of Health,0.95,manual_people_csv,https://news.gov.bc.ca/ministries/health,josie_osborne_bc_health
+Dr. Bonnie Henry,Provincial Health Officer,Government of British Columbia,Provincial Health Officer,0.95,manual_people_csv,https://www2.gov.bc.ca/gov/content/health/about-bc-s-health-care-system/office-of-the-provincial-health-officer,bonnie_henry_pho
+Dan Levitt,B.C. Seniors Advocate,Office of the Seniors Advocate,B.C. Seniors Advocate,0.92,manual_people_csv,https://www.seniorsadvocatebc.ca/,dan_levitt_seniors_advocate
+Niki Sharma,Attorney General,Government of British Columbia,Attorney General,0.90,manual_people_csv,https://news.gov.bc.ca/ministries/attorney-general,niki_sharma_attorney_general
+Tality Wellness Team,Operator,Tality Wellness,Public operator team,0.72,manual_people_csv,https://www.talitywellness.ca/,tality_wellness_team
+AetherHaus Team,Operator,AetherHaus,Public operator team,0.70,manual_people_csv,https://www.aetherhaus.ca/,aetherhaus_team

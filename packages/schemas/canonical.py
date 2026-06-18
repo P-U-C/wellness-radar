@@ -76,14 +76,42 @@ class CanonicalOperator:
 
 
 @dataclass
+class CanonicalOrganization:
+    id: str
+    name: str
+    normalized_name: str
+    registry_id: str | None
+    orgbook_id: str | None
+    orgbook_match_status: str
+    orgbook_match_confidence: float
+    organization_type: str | None
+    website: str | None
+    social_links: dict[str, Any]
+    source_refs: list[dict[str, Any]]
+    confidence_score: float
+
+
+@dataclass
+class CanonicalPerson:
+    id: str
+    name: str
+    normalized_name: str
+    roles: list[str]
+    affiliations: list[dict[str, Any]]
+    public_profiles: dict[str, Any]
+    confidence_score: float
+    source_refs: list[dict[str, Any]]
+
+
+@dataclass
 class SourceEventRecord:
     id: str
     source_name: str
     raw_payload_id: str
     source_record_id: str
     event_type: str
-    entity_type: str
-    entity_id: str
+    entity_type: str | None
+    entity_id: str | None
     title: str
     occurred_at: datetime
     trust_tier: str
@@ -100,16 +128,24 @@ class SignalRecord:
     type: str
     severity: str
     title: str
-    summary: str
-    why_it_matters: str
+    summary: str | None
+    why_it_matters: str | None
     source_name: str
     source_url: str | None
     trust_tier: str
     occurred_at: datetime
     lat: float | None
     lng: float | None
-    related_operator_id: str
+    related_operator_id: str | None
     source_event_ids: list[str]
     raw_payload_id: str
     source_refs: list[dict[str, Any]]
     confidence_score: float
+    related_organization_id: str | None = None
+    related_person_ids: list[str] = field(default_factory=list)
+    ai_generated_fields: list[str] = field(default_factory=list)
+    prompt_version: str | None = None
+    ai_model: str | None = None
+    ai_category_suggestions: list[str] = field(default_factory=list)
+    ai_severity_suggestion: str | None = None
+    ai_confidence_score: float | None = None

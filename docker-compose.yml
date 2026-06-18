@@ -38,7 +38,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/wellness_radar
       RAW_STORAGE_DIR: /app/raw
       CITY_VANCOUVER_LIMIT: 75
-    command: ["sh", "-c", "python -m db.migrate && python -m apps.jobs.runner city_vancouver_licences --limit $${CITY_VANCOUVER_LIMIT:-75} && python -m apps.jobs.scheduler"]
+      M2_INGEST_LIMIT: 75
+    command: ["sh", "-c", "python -m db.migrate && python -m apps.jobs.runner m2 --limit $${M2_INGEST_LIMIT:-75} && python -m apps.jobs.scheduler"]
     depends_on:
       db:
         condition: service_healthy
