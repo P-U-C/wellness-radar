@@ -91,8 +91,103 @@ export type Person = {
   primary_role: string | null;
   primary_affiliation: string | null;
   affiliation_role: string | null;
+  influence_score: number | null;
+  influence_components?: Record<string, number | string> | null;
+  influence_explanation?: string | null;
+  influence_methodology_version?: string | null;
+  influence_source_confidence?: number | null;
+  influence_source_refs?: SourceRef[];
   confidence_score: number;
   source_refs: SourceRef[];
+};
+
+export type OpportunityHeatmapCell = {
+  id: string;
+  category: string;
+  geo_code: string;
+  geo_name: string;
+  geo_level: string;
+  lat: number | null;
+  lng: number | null;
+  supply_count: number;
+  operator_ids: string[];
+  population: number | null;
+  business_count: number | null;
+  opportunity_score: number;
+  component_breakdown: Record<string, unknown>;
+  calculation_method: string;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  trace_payload: Record<string, unknown>;
+  generated_at: string;
+};
+
+export type OpportunityScorecard = {
+  id: string;
+  category: string;
+  geo_code: string;
+  geo_name: string;
+  opportunity_score: number;
+  component_breakdown: Record<string, unknown>;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  calculation_method: string;
+  caveat: string;
+  generated_at: string;
+};
+
+export type CategoryVelocity = {
+  id: string;
+  category: string;
+  window_days: number;
+  new_operator_count: number;
+  job_velocity_count: number;
+  event_velocity_count: number;
+  news_velocity_count: number;
+  component_breakdown: Record<string, unknown>;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  calculated_at: string;
+};
+
+export type TrendTile = {
+  term: string;
+  city: string;
+  geography_code: string | null;
+  growth_class: string;
+  series: Array<{ period: string; value: number }>;
+  source_name: string;
+  fetched_at: string;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  is_stub: boolean;
+  methodology: string;
+};
+
+export type GraphNode = {
+  id: string;
+  node_type: "person" | "organization" | "operator" | "event";
+  entity_id: string;
+  label: string;
+  primary_category: string | null;
+  centrality: number;
+  community: number;
+  x: number | null;
+  y: number | null;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  payload: Record<string, unknown>;
+};
+
+export type GraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  edge_type: string;
+  weight: number;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  payload: Record<string, unknown>;
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -137,4 +232,37 @@ export async function fetchPeople(sort = "confidence"): Promise<Person[]> {
   const params = new URLSearchParams({ sort });
   const data = await getJson<{ items: Person[] }>(`/people?${params.toString()}`);
   return data.items;
+}
+
+export async function fetchWhitespace(category: string): Promise<OpportunityHeatmapCell[]> {
+  const params = new URLSearchParams({ category });
+  const data = await getJson<{ items: OpportunityHeatmapCell[] }>(
+    `/analytics/whitespace?${params.toString()}`
+  );
+  return data.items;
+}
+
+export async function fetchOpportunityScorecards(category: string): Promise<OpportunityScorecard[]> {
+  const params = new URLSearchParams({ category });
+  const data = await getJson<{ items: OpportunityScorecard[] }>(
+    `/analytics/opportunity-scorecards?${params.toString()}`
+  );
+  return data.items;
+}
+
+export async function fetchCategoryVelocity(category: string): Promise<CategoryVelocity[]> {
+  const params = new URLSearchParams({ category });
+  const data = await getJson<{ items: CategoryVelocity[] }>(
+    `/analytics/category-velocity?${params.toString()}`
+  );
+  return data.items;
+}
+
+export async function fetchTrends(): Promise<TrendTile[]> {
+  const data = await getJson<{ items: TrendTile[] }>("/trends");
+  return data.items;
+}
+
+export async function fetchPeopleGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+  return getJson<{ nodes: GraphNode[]; edges: GraphEdge[] }>("/people-graph");
 }

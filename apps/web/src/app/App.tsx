@@ -1,21 +1,35 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SourceFreshnessPanel } from "../features/admin/SourceFreshnessPanel";
+import { OpportunityPanel } from "../features/analytics/OpportunityPanel";
+import { TrendTiles } from "../features/analytics/TrendTiles";
 import { EntityDrawer } from "../features/entities/EntityDrawer";
 import { SignalFeed } from "../features/feed/SignalFeed";
+import { PeopleGraph } from "../features/graph/PeopleGraph";
 import { OperatorMap } from "../features/map/OperatorMap";
 import { PeopleLeaderboard } from "../features/people/PeopleLeaderboard";
 import {
+  fetchCategoryVelocity,
   fetchOperators,
+  fetchOpportunityScorecards,
   fetchPeople,
+  fetchPeopleGraph,
   fetchSignals,
   fetchSourceFreshness,
   fetchSourceRuns,
+  fetchTrends,
+  fetchWhitespace,
+  type CategoryVelocity,
+  type GraphEdge,
+  type GraphNode,
   type Operator,
+  type OpportunityHeatmapCell,
+  type OpportunityScorecard,
   type Person,
   type Signal,
   type SourceFreshness,
-  type SourceRun
+  type SourceRun,
+  type TrendTile
 } from "../lib/api";
 import { isInBcBounds } from "../lib/geo";
 
@@ -35,9 +49,15 @@ export function App() {
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
   const [sourceFreshness, setSourceFreshness] = useState<SourceFreshness[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [heatmapCells, setHeatmapCells] = useState<OpportunityHeatmapCell[]>([]);
+  const [scorecards, setScorecards] = useState<OpportunityScorecard[]>([]);
+  const [velocity, setVelocity] = useState<CategoryVelocity[]>([]);
+  const [trends, setTrends] = useState<TrendTile[]>([]);
+  const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
-  const [peopleSort, setPeopleSort] = useState("confidence");
+  const [peopleSort, setPeopleSort] = useState("influence");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,18 +65,41 @@ export function App() {
     setLoading(true);
     setError(null);
     try {
-      const [operatorData, signalData, runData, freshnessData, peopleData] = await Promise.all([
+      const analyticsCategory = category === "all" ? "recovery_contrast_therapy" : category;
+      const [
+        operatorData,
+        signalData,
+        runData,
+        freshnessData,
+        peopleData,
+        heatmapData,
+        scorecardData,
+        velocityData,
+        trendData,
+        graphData
+      ] = await Promise.all([
         fetchOperators(category),
         fetchSignals(),
         fetchSourceRuns(),
         fetchSourceFreshness(),
-        fetchPeople(peopleSort)
+        fetchPeople(peopleSort),
+        fetchWhitespace(analyticsCategory),
+        fetchOpportunityScorecards(analyticsCategory),
+        fetchCategoryVelocity(analyticsCategory),
+        fetchTrends(),
+        fetchPeopleGraph()
       ]);
       setOperators(operatorData);
       setSignals(signalData);
       setSourceRuns(runData);
       setSourceFreshness(freshnessData);
       setPeople(peopleData);
+      setHeatmapCells(heatmapData);
+      setScorecards(scorecardData);
+      setVelocity(velocityData);
+      setTrends(trendData);
+      setGraphNodes(graphData.nodes);
+      setGraphEdges(graphData.edges);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load API data");
     } finally {
@@ -157,11 +200,15 @@ export function App() {
             <small>OSM, OrgBook, RSS, official feeds, manual seeds, and governed people import.</small>
           </div>
           <SourceFreshnessPanel sources={sourceFreshness} />
+          <OpportunityPanel scorecards={scorecards} heatmapCells={heatmapCells} velocity={velocity} />
+          <TrendTiles trends={trends} />
           <PeopleLeaderboard people={people} sort={peopleSort} onSortChange={setPeopleSort} />
+          <PeopleGraph nodes={graphNodes} edges={graphEdges} />
         </aside>
 
         <OperatorMap
           operators={visibleOperators}
+          heatmapCells={heatmapCells}
           selectedOperatorId={selectedOperatorId}
           onSelectOperator={setSelectedOperatorId}
         />

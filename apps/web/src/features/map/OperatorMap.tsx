@@ -3,11 +3,12 @@ import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef } from "react";
 import Map, { Layer, Source, type LayerProps, type MapLayerMouseEvent, type MapRef } from "react-map-gl/maplibre";
-import type { Operator } from "../../lib/api";
-import { BC_BBOX, operatorsToFeatureCollection } from "../../lib/geo";
+import type { Operator, OpportunityHeatmapCell } from "../../lib/api";
+import { BC_BBOX, heatmapToFeatureCollection, operatorsToFeatureCollection } from "../../lib/geo";
 
 type Props = {
   operators: Operator[];
+  heatmapCells: OpportunityHeatmapCell[];
   selectedOperatorId: string | null;
   onSelectOperator: (operatorId: string) => void;
 };
@@ -92,9 +93,35 @@ const selectedLayer: LayerProps = {
   }
 };
 
-export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }: Props) {
+const heatmapLayer: LayerProps = {
+  id: "whitespace-cells",
+  type: "circle",
+  paint: {
+    "circle-color": [
+      "interpolate",
+      ["linear"],
+      ["get", "score"],
+      0.2,
+      "#27415f",
+      0.45,
+      "#2bd4a7",
+      0.7,
+      "#f2c94c",
+      0.9,
+      "#ff6b6b"
+    ],
+    "circle-radius": ["interpolate", ["linear"], ["get", "score"], 0.2, 18, 0.9, 46],
+    "circle-opacity": 0.34,
+    "circle-stroke-color": "#f5f0e8",
+    "circle-stroke-opacity": 0.3,
+    "circle-stroke-width": 1
+  }
+};
+
+export function OperatorMap({ operators, heatmapCells, selectedOperatorId, onSelectOperator }: Props) {
   const mapRef = useRef<MapRef | null>(null);
   const data = useMemo(() => operatorsToFeatureCollection(operators), [operators]);
+  const heatmapData = useMemo(() => heatmapToFeatureCollection(heatmapCells), [heatmapCells]);
   const selected = useMemo(
     () =>
       ({
@@ -153,6 +180,9 @@ export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }:
         onClick={handleClick}
         attributionControl={false}
       >
+        <Source id="whitespace" type="geojson" data={heatmapData}>
+          <Layer {...heatmapLayer} />
+        </Source>
         <Source id="operators" type="geojson" data={data} cluster clusterRadius={48} clusterMaxZoom={13}>
           <Layer {...clusterLayer} />
           <Layer {...clusterCountLayer} />
@@ -165,6 +195,7 @@ export function OperatorMap({ operators, selectedOperatorId, onSelectOperator }:
         <span><i className="legendSpa" />Spa</span>
         <span><i className="legendFitness" />Fitness</span>
         <span><i className="legendAllied" />Allied</span>
+        <span><i className="legendWhitespace" />White-space</span>
       </div>
     </section>
   );
