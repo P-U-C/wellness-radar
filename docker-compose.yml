@@ -42,6 +42,14 @@ services:
       RAW_STORAGE_DIR: /app/raw
       CITY_VANCOUVER_LIMIT: 75
       M2_INGEST_LIMIT: 75
+      WR_SCHED_ENABLED: "true"
+      WR_SCHED_TICK_SECONDS: 60
+      WR_SCHED_FRESHNESS_SECONDS: 300
+      WR_SCHED_INGEST_LIMIT: 75
+      WR_SCHED_MAX_RETRIES: 2
+      WR_SCHED_BACKOFF_BASE_SECONDS: 60
+      WR_SCHED_BACKOFF_MAX_SECONDS: 3600
+      WR_ALERT_WEBHOOK_URL: ""
     command: ["sh", "-c", "python -m db.migrate && python -m apps.jobs.runner m2 --limit $${M2_INGEST_LIMIT:-75} && python -m apps.jobs.runner m3 && python -m apps.jobs.scheduler"]
     depends_on:
       db:
