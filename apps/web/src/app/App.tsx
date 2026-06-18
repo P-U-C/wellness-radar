@@ -9,6 +9,8 @@ import { PeopleGraph } from "../features/graph/PeopleGraph";
 import { KioskMode } from "../features/kiosk/KioskMode";
 import { OperatorMap, type MapLayers } from "../features/map/OperatorMap";
 import { PeopleLeaderboard } from "../features/people/PeopleLeaderboard";
+import { SearchScreen } from "../features/search/SearchScreen";
+import { SystemScreen } from "../features/system/SystemScreen";
 import {
   fetchCategoryVelocity,
   fetchObservability,
@@ -614,6 +616,26 @@ export function App() {
               onOpenOperator={openOperator}
             />
           </div>
+        ) : screen === "search" ? (
+          <SearchScreen
+            operators={detailOperators}
+            signals={sourceBackedSignals}
+            people={people.filter((person) => person.source_refs.length > 0)}
+            scorecards={scorecards.filter((scorecard) => scorecard.source_refs.length > 0)}
+            onOpenOperator={openOperator}
+            onOpenSignal={(signal) => {
+              onSelectSignal(signal);
+              navigate("/signals");
+            }}
+            onOpenPerson={(personId) => {
+              const node = graphNodes.find((item) => item.entity_id === personId || item.id === personId);
+              setSelectedGraphNodeId(node?.id ?? null);
+              navigate("/people");
+            }}
+            onOpenOpportunity={() => navigate("/opportunity")}
+          />
+        ) : screen === "system" ? (
+          <SystemScreen />
         ) : (
           <DeferredScreen
             screen={screen}
