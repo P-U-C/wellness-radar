@@ -99,8 +99,8 @@ export function App() {
   const [category, setCategory] = useState("all");
   const [opportunityGeoLevel, setOpportunityGeoLevel] = useState<"CSD" | "neighborhood">("neighborhood");
   const [peopleSort] = useState("influence");
-  const [minConfidence, setMinConfidence] = useState(0.6);
-  const [minOpportunity, setMinOpportunity] = useState(0.55);
+  const [minConfidence, setMinConfidence] = useState(0.0);
+  const [minOpportunity, setMinOpportunity] = useState(0.0);
   const [trustFilter, setTrustFilter] = useState("all");
   const [signalTypeFilter, setSignalTypeFilter] = useState("all");
   const [route, setRoute] = useState<RouteState>(() => routeFromPath(window.location.pathname));
