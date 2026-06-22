@@ -12,6 +12,7 @@ from apps.api.app.services.freshness import age_hours, iso_or_none
 from apps.api.app.services.metrics import runtime_metrics
 
 router = APIRouter(tags=["signals"])
+MAX_SIGNALS_LIMIT = 500
 
 
 def _signal_item(row: dict[str, Any]) -> dict[str, Any]:
@@ -52,8 +53,9 @@ def list_signals(
     severity: str | None = Query(default=None),
     since: Annotated[datetime | None, Query()] = None,
     related_operator_id: str | None = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=500),
+    limit: int = Query(default=200, ge=1),
 ) -> dict[str, Any]:
+    active_limit = min(limit, MAX_SIGNALS_LIMIT)
     try:
         parsed_bbox = parse_bbox(bbox)
     except ValueError as exc:
@@ -83,7 +85,7 @@ def list_signals(
     if related_operator_id:
         clauses.append("related_operator_id = %s")
         params.append(related_operator_id)
-    params.append(limit)
+    params.append(active_limit)
 
     sql = f"""
       SELECT
@@ -120,7 +122,16 @@ def list_signals(
         rows = cast(list[dict[str, Any]], conn.execute(sql, params).fetchall())
     runtime_metrics.observe_map_query(duration_ms=(time.perf_counter() - start) * 1000)
     items = [_signal_item(row) for row in rows]
-    return {"items": items, "meta": {"count": len(items), "bbox": parsed_bbox}}
+    return {
+        "items": items,
+        "meta": {
+            "count": len(items),
+            "bbox": parsed_bbox,
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_SIGNALS_LIMIT,
+        },
+    }
 
 
 @router.get("/signals/{signal_id}")

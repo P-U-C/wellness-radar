@@ -8,6 +8,8 @@ from apps.api.app.db.connection import get_connection
 from apps.api.app.services.freshness import age_hours
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+MAX_WHITESPACE_LIMIT = 500
+MAX_SCORECARD_LIMIT = 100
 
 REQUIRED_OPPORTUNITY_COMPONENTS = {
     "demand_proxy",
@@ -24,8 +26,9 @@ REQUIRED_OPPORTUNITY_COMPONENTS = {
 def whitespace_heatmap(
     category: str = Query(default="recovery_contrast_therapy"),
     geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=100, ge=1),
 ) -> dict[str, Any]:
+    active_limit = min(limit, MAX_WHITESPACE_LIMIT)
     clauses = [
         "category = %s",
         "jsonb_array_length(source_refs) > 0",
@@ -36,7 +39,7 @@ def whitespace_heatmap(
     if geo_level:
         clauses.append("geo_level = %s")
         params.append(geo_level)
-    params.append(limit)
+    params.append(active_limit)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
@@ -69,15 +72,24 @@ def whitespace_heatmap(
                 params,
             ).fetchall(),
         )
-    return {"items": [_heatmap_item(row) for row in rows], "meta": {"count": len(rows)}}
+    return {
+        "items": [_heatmap_item(row) for row in rows],
+        "meta": {
+            "count": len(rows),
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_WHITESPACE_LIMIT,
+        },
+    }
 
 
 @router.get("/opportunity-scorecards")
 def opportunity_scorecards(
     category: str = Query(default="recovery_contrast_therapy"),
     geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),
-    limit: int = Query(default=10, ge=1, le=100),
+    limit: int = Query(default=10, ge=1),
 ) -> dict[str, Any]:
+    active_limit = min(limit, MAX_SCORECARD_LIMIT)
     clauses = [
         "category = %s",
         "jsonb_array_length(source_refs) > 0",
@@ -88,7 +100,7 @@ def opportunity_scorecards(
     if geo_level:
         clauses.append("geo_level = %s")
         params.append(geo_level)
-    params.append(limit)
+    params.append(active_limit)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
@@ -115,7 +127,15 @@ def opportunity_scorecards(
                 params,
             ).fetchall(),
         )
-    return {"items": [_scorecard_item(row) for row in rows], "meta": {"count": len(rows)}}
+    return {
+        "items": [_scorecard_item(row) for row in rows],
+        "meta": {
+            "count": len(rows),
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_SCORECARD_LIMIT,
+        },
+    }
 
 
 @router.get("/category-velocity")

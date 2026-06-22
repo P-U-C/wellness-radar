@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import csv
+import io
+import json
 import time
-from typing import Any, cast
+from typing import Any, Literal, cast
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from apps.api.app.db.bounds import parse_bbox
 from apps.api.app.db.connection import get_connection
@@ -11,6 +14,8 @@ from apps.api.app.services.freshness import age_hours, iso_or_none
 from apps.api.app.services.metrics import runtime_metrics
 
 router = APIRouter(tags=["operators"])
+MAX_OPERATOR_LIMIT = 1000
+MAX_LEADS_LIMIT = 500
 
 
 def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -42,8 +47,9 @@ def list_operators(
     bbox: str | None = Query(default=None),
     category: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    limit: int = Query(default=500, ge=1, le=1000),
+    limit: int = Query(default=500, ge=1),
 ) -> dict[str, Any]:
+    active_limit = min(limit, MAX_OPERATOR_LIMIT)
     try:
         parsed_bbox = parse_bbox(bbox)
     except ValueError as exc:
@@ -76,7 +82,7 @@ def list_operators(
         op.status::text AS status,
         op.address,
         op.municipality,
-        op.neighborhood,
+        COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name) AS neighborhood,
         op.phone,
         op.website,
         op.social_links,
@@ -89,6 +95,7 @@ def list_operators(
         op.last_seen_at,
         contacts.contacts
       FROM "operator" op
+      LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()}) derived_neighborhood ON TRUE
       LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
       WHERE {where_sql}
       ORDER BY op.last_seen_at DESC, op.name ASC
@@ -96,7 +103,10 @@ def list_operators(
     """
     start = time.perf_counter()
     with get_connection() as conn:
-        rows = cast(list[dict[str, Any]], conn.execute(sql, [*params, limit]).fetchall())
+        rows = cast(
+            list[dict[str, Any]],
+            conn.execute(sql, [*params, active_limit]).fetchall(),
+        )
         coverage = cast(
             dict[str, Any],
             conn.execute(
@@ -123,6 +133,9 @@ def list_operators(
         "meta": {
             "count": len(items),
             "bbox": parsed_bbox,
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_OPERATOR_LIMIT,
             "contact_coverage": {
                 "operator_count": total,
                 "with_contact_count": with_contact,
@@ -146,7 +159,8 @@ def get_operator(operator_id: str) -> dict[str, Any]:
                   op.status::text AS status,
                   op.address,
                   op.municipality,
-                  op.neighborhood,
+                  COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name)
+                    AS neighborhood,
                   op.phone,
                   op.website,
                   op.social_links,
@@ -161,6 +175,8 @@ def get_operator(operator_id: str) -> dict[str, Any]:
                   op.last_seen_at,
                   contacts.contacts
                 FROM "operator" op
+                LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()})
+                  derived_neighborhood ON TRUE
                 LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
                 WHERE op.id = %s
                   AND op.geom IS NOT NULL
@@ -219,11 +235,14 @@ def get_operator(operator_id: str) -> dict[str, Any]:
 
 @router.get("/leads")
 def list_leads(
+    request: Request,
     category: str | None = Query(default=None),
     municipality: str | None = Query(default=None),
     has_contact: bool | None = Query(default=True),
-    limit: int = Query(default=100, ge=1, le=500),
-) -> dict[str, Any]:
+    limit: int = Query(default=100, ge=1),
+    format: Literal["json", "csv"] = Query(default="json"),
+) -> Any:
+    active_limit = min(limit, MAX_LEADS_LIMIT)
     clauses = [
         "op.geom IS NOT NULL",
         "jsonb_array_length(op.source_refs) > 0",
@@ -254,7 +273,8 @@ def list_leads(
                   op.status::text AS status,
                   op.address,
                   op.municipality,
-                  op.neighborhood,
+                  COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name)
+                    AS neighborhood,
                   op.phone,
                   op.website,
                   op.social_links,
@@ -272,6 +292,8 @@ def list_leads(
                   opportunity.opportunity_score AS opportunity_score,
                   opportunity.source_refs AS opportunity_source_refs
                 FROM "operator" op
+                LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()})
+                  derived_neighborhood ON TRUE
                 LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
                 LEFT JOIN LATERAL (
                   SELECT count(*)::int AS signal_count
@@ -286,7 +308,9 @@ def list_leads(
                     AND jsonb_array_length(os.source_refs) > 0
                     AND (
                       lower(os.geo_name) = lower(COALESCE(op.municipality, ''))
-                      OR lower(os.geo_name) = lower(COALESCE(op.neighborhood, ''))
+                      OR lower(os.geo_name) = lower(
+                        COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name, '')
+                      )
                       OR lower(os.geo_name) LIKE (
                         '%%' || lower(COALESCE(op.municipality, '')) || '%%'
                       )
@@ -301,12 +325,26 @@ def list_leads(
                   op.name ASC
                 LIMIT %s
                 """,
-                [*params, limit],
+                [*params, active_limit],
             ).fetchall(),
         )
+    items = [_lead_row(row) for row in rows]
+    wants_csv = format == "csv" or "text/csv" in request.headers.get("accept", "")
+    if wants_csv:
+        return Response(
+            content=_rows_to_csv(_lead_csv_rows(items)),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="leads.csv"'},
+        )
     return {
-        "items": [_lead_row(row) for row in rows],
-        "meta": {"count": len(rows), "has_contact": has_contact},
+        "items": items,
+        "meta": {
+            "count": len(rows),
+            "has_contact": has_contact,
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_LEADS_LIMIT,
+        },
     }
 
 
@@ -331,6 +369,7 @@ def _contacts_lateral_sql() -> str:
           jsonb_agg(
             jsonb_build_object(
               'type', oc.contact_type,
+              'contact_type', oc.contact_type,
               'value', oc.value,
               'platform', oc.platform,
               'source_ref', oc.source_ref,
@@ -344,3 +383,107 @@ def _contacts_lateral_sql() -> str:
       FROM operator_contact oc
       WHERE oc.operator_id = op.id
     """
+
+
+def _derived_neighborhood_lateral_sql() -> str:
+    return """
+      SELECT geo.geo_name
+      FROM statcan_geography geo
+      LEFT JOIN statcan_geography parent ON parent.geo_code = geo.parent_geo_code
+      WHERE geo.geo_level = 'neighborhood'
+        AND geo.geom IS NOT NULL
+        AND op.geom IS NOT NULL
+        AND (
+          op.neighborhood IS NULL
+          OR trim(op.neighborhood) = ''
+        )
+        AND (
+          op.municipality IS NULL
+          OR parent.geo_name IS NULL
+          OR lower(parent.geo_name) = lower(op.municipality)
+        )
+      ORDER BY ST_Distance(op.geom, geo.geom) ASC
+      LIMIT 1
+    """
+
+
+def _lead_csv_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in items:
+        contacts = item.get("contacts") or [None]
+        for contact in contacts:
+            source_ref = contact.get("source_ref") if isinstance(contact, dict) else {}
+            rows.append(
+                {
+                    "operator_id": item["id"],
+                    "operator_name": item["name"],
+                    "categories": item["categories"],
+                    "status": item["status"],
+                    "address": item["address"],
+                    "municipality": item["municipality"],
+                    "neighborhood": item["neighborhood"],
+                    "contact_type": (
+                        contact.get("contact_type") or contact.get("type")
+                        if isinstance(contact, dict)
+                        else None
+                    ),
+                    "contact_value": contact.get("value") if isinstance(contact, dict) else None,
+                    "contact_platform": (
+                        contact.get("platform") if isinstance(contact, dict) else None
+                    ),
+                    "contact_confidence": (
+                        contact.get("confidence") if isinstance(contact, dict) else None
+                    ),
+                    "contact_source_name": source_ref.get("source_name")
+                    if isinstance(source_ref, dict)
+                    else None,
+                    "contact_source_url": source_ref.get("url")
+                    if isinstance(source_ref, dict)
+                    else None,
+                    "contact_source_record_id": source_ref.get("source_record_id")
+                    if isinstance(source_ref, dict)
+                    else None,
+                    "source_refs": item["source_refs"],
+                    "opportunity_geo_name": item["opportunity_context"]["geo_name"],
+                    "opportunity_score": item["opportunity_context"]["opportunity_score"],
+                }
+            )
+    return rows
+
+
+def _rows_to_csv(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return ""
+    output = io.StringIO()
+    fieldnames = [
+        "operator_id",
+        "operator_name",
+        "categories",
+        "status",
+        "address",
+        "municipality",
+        "neighborhood",
+        "contact_type",
+        "contact_value",
+        "contact_platform",
+        "contact_confidence",
+        "contact_source_name",
+        "contact_source_url",
+        "contact_source_record_id",
+        "opportunity_geo_name",
+        "opportunity_score",
+        "source_refs",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: _csv_value(row.get(key)) for key in fieldnames})
+    return output.getvalue()
+
+
+def _csv_value(value: Any) -> Any:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, dict | list):
+        return json.dumps(value, sort_keys=True, default=str)
+    return value
