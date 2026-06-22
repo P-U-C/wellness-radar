@@ -165,6 +165,10 @@ def run_registered_source(source_name: str, limit: int) -> RunMetrics:
         from apps.jobs.analytics.denominators import run_statcan_denominators
 
         return run_statcan_denominators()
+    if source_name == "city_vancouver_local_area_boundary":
+        from apps.jobs.analytics.neighborhoods import run_neighborhood_assignment
+
+        return run_neighborhood_assignment()
     if source_name == "peer_city_trends_fixture":
         from apps.jobs.analytics.trends import run_peer_city_trends
 

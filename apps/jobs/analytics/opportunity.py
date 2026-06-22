@@ -16,7 +16,10 @@ OPPORTUNITY_METHOD = (
     "M3 v1: 0.30 demand_proxy + 0.20 low_supply_density + 0.15 category_growth "
     "+ 0.15 target_demo_fit + 0.10 transit_access + 0.05 event_community_activity "
     "+ 0.05 source_confidence. White-space means a supply-demand signal, not "
-    "guaranteed economic attractiveness."
+    "guaranteed economic attractiveness. CM5 normalizes population demand with "
+    "log1p(raw population) against the live CMA population denominator and normalizes "
+    "business intensity against observed same-category business density, so raw demand "
+    "components do not saturate at 1.0 solely because a CSD is large."
 )
 NEIGHBORHOOD_METHOD = (
     "CM3 neighborhood extension: supply is counted from BC-gated operators carrying "
@@ -102,6 +105,18 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                 """
             ).fetchall()
         )
+
+    def population_ceiling(self) -> float:
+        row = self.conn.execute(
+            """
+            SELECT max(value)::float AS population_ceiling
+            FROM statcan_denominator
+            WHERE metric = 'population'
+            """
+        ).fetchone()
+        if row is None or row["population_ceiling"] is None:
+            return 1.0
+        return max(float(row["population_ceiling"]), 1.0)
 
     def business_denominator(self, geo_code: str, category: str) -> dict[str, Any] | None:
         return cast(
@@ -568,7 +583,7 @@ def run_opportunity_analytics(
     try:
         categories = repo.categories_with_denominators()
         geographies = repo.geographies()
-        max_population = max((float(geo["population"]) for geo in geographies), default=1.0)
+        max_population = repo.population_ceiling()
         neighborhood_denominator = _neighborhood_denominator_context(
             repo.operators_with_neighborhoods()
         )
@@ -577,6 +592,7 @@ def run_opportunity_analytics(
             category_operators = repo.operators_for_category(category)
             raw_rows: list[dict[str, Any]] = []
             max_density = 0.0
+            max_business_density = 0.0
             max_activity = 0
             max_growth = 0
             for geo in geographies:
@@ -590,7 +606,9 @@ def run_opportunity_analytics(
                 population = float(geo["population"])
                 supply_count = len(operators)
                 density = supply_count / max(population / 10000, 1)
+                business_density = float(denominator["value"]) / max(population / 10000, 1)
                 max_density = max(max_density, density)
+                max_business_density = max(max_business_density, business_density)
                 max_activity = max(max_activity, signal_count)
                 new_operators = sum(1 for operator in operators if operator["is_new_180d"])
                 max_growth = max(max_growth, new_operators)
@@ -609,6 +627,7 @@ def run_opportunity_analytics(
                         "signal_refs": signal_refs,
                         "signal_conf": signal_conf,
                         "density": density,
+                        "business_density": business_density,
                         "new_operators": new_operators,
                         "nearest_competitors": nearest_competitors,
                         "competitor_count_within_radius": len(nearest_competitors),
@@ -630,6 +649,9 @@ def run_opportunity_analytics(
             )
             for row in neighborhood_rows:
                 max_density = max(max_density, float(row["density"]))
+                max_business_density = max(
+                    max_business_density, float(row["business_density"])
+                )
                 max_activity = max(max_activity, int(row["signal_count"]))
                 max_growth = max(max_growth, int(row["new_operators"]))
             raw_rows.extend(neighborhood_rows)
@@ -640,6 +662,7 @@ def run_opportunity_analytics(
                     row=row,
                     max_population=max_population,
                     max_density=max_density,
+                    max_business_density=max_business_density,
                     max_activity=max_activity,
                     max_growth=max_growth,
                 )
@@ -667,6 +690,7 @@ def _payload_for_cell(
     row: dict[str, Any],
     max_population: float,
     max_density: float,
+    max_business_density: float,
     max_activity: int,
     max_growth: int,
 ) -> dict[str, Any]:
@@ -676,11 +700,12 @@ def _payload_for_cell(
     population = float(geo["population"])
     business_count = float(denominator["value"])
     supply_count = len(operators)
-    demand_proxy = _clamp(population / max_population)
+    demand_proxy = _log_normalize(population, max_population)
     low_supply_density = _clamp(1 - (row["density"] / max(max_density, 0.0001)))
     category_growth = _clamp(row["new_operators"] / max(max_growth, 1))
-    business_density = min(business_count / max(population / 10000, 1), 1)
-    target_demo_fit = _clamp((demand_proxy + business_density) / 2)
+    business_density = float(row.get("business_density") or 0.0)
+    business_intensity = _clamp(business_density / max(max_business_density, 0.0001))
+    target_demo_fit = _clamp((demand_proxy + business_intensity) / 2)
     transit_access = _core_access_proxy(geo["lat"], geo["lng"])
     event_community_activity = _clamp(row["signal_count"] / max(max_activity, 1))
     demand = row.get("demand", {})
@@ -728,6 +753,9 @@ def _payload_for_cell(
             "operator_ids": operator_ids,
             "signal_count_180d": row["signal_count"],
             "supply_density_per_10000_population": round(row["density"], 4),
+            "business_density_per_10000_population": round(business_density, 4),
+            "business_density_normalized": round(business_intensity, 4),
+            "population_demand_normalization": "log1p(raw_population) / log1p(CMA_population)",
             "competitor_count_within_radius": row.get(
                 "competitor_count_within_radius", supply_count
             ),
@@ -880,6 +908,7 @@ def _neighborhood_rows_for_category(
         )
         supply_count = len(operators)
         density = supply_count / max(population / 10000, 1)
+        business_density = business_count / max(population / 10000, 1)
         new_operators = sum(1 for operator in operators if operator["is_new_180d"])
         derived_denominator = {
             "id": stable_id("den_neighborhood", denominator["id"], geo_code),
@@ -926,6 +955,7 @@ def _neighborhood_rows_for_category(
                 "signal_refs": signal_refs,
                 "signal_conf": signal_conf,
                 "density": density,
+                "business_density": business_density,
                 "new_operators": new_operators,
                 "nearest_competitors": nearest_competitors,
                 "competitor_count_within_radius": len(nearest_competitors),
@@ -1122,6 +1152,12 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 def _clamp(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def _log_normalize(value: float, ceiling: float) -> float:
+    if value <= 0 or ceiling <= 0:
+        return 0.0
+    return _clamp(math.log1p(value) / math.log1p(ceiling))
 
 
 def _average(values: Iterable[float | None], *, default: float) -> float:
