@@ -179,10 +179,47 @@ def get_bundle(bundle_id: str) -> dict[str, Any]:
                 (bundle["id"],),
             ).fetchall(),
         )
+        worldwide_match = cast(
+            dict[str, Any] | None,
+            conn.execute(
+                """
+                SELECT worldwide_match, source_refs
+                FROM bundle_global
+                WHERE bundle_id = %s
+                  AND jsonb_array_length(source_refs) > 0
+                """,
+                (bundle["id"],),
+            ).fetchone(),
+        )
+        first_mover_cities = cast(
+            list[dict[str, Any]],
+            conn.execute(
+                """
+                SELECT
+                  city,
+                  count,
+                  density,
+                  ratio_vs_vancouver,
+                  source_status,
+                  source_refs,
+                  confidence_score,
+                  source_error
+                FROM bundle_first_mover_city
+                WHERE bundle_id = %s
+                  AND jsonb_array_length(source_refs) > 0
+                ORDER BY ratio_vs_vancouver DESC, density DESC, city ASC
+                """,
+                (bundle["id"],),
+            ).fetchall(),
+        )
     item = _bundle_summary(bundle)
     item["members"] = [_member_item(row) for row in members]
     item["top_people"] = [_person_item(row) for row in people]
     item["supporting_signals"] = bundle["supporting_signals"] or []
+    item["worldwide_match"] = (
+        _worldwide_match_item(worldwide_match) if worldwide_match else None
+    )
+    item["first_mover_cities"] = [_first_mover_city_item(row) for row in first_mover_cities]
     return item
 
 
@@ -256,6 +293,35 @@ def _person_item(row: dict[str, Any]) -> dict[str, Any]:
         "source_refs": row["source_refs"],
         "freshness_at": iso_or_none(row.get("last_seen_at")),
         "freshness_age_hours": age_hours(row.get("last_seen_at")),
+    }
+
+
+def _worldwide_match_item(row: dict[str, Any]) -> dict[str, Any]:
+    worldwide_match = dict(row["worldwide_match"] or {})
+    source_refs = _unique_refs(
+        [
+            *list(worldwide_match.get("source_refs") or []),
+            *list(row["source_refs"] or []),
+        ]
+    )
+    worldwide_match["source_refs"] = source_refs
+    if worldwide_match.get("value") is not None:
+        worldwide_match["value"] = float(worldwide_match["value"])
+    if worldwide_match.get("confidence_score") is not None:
+        worldwide_match["confidence_score"] = float(worldwide_match["confidence_score"])
+    return worldwide_match
+
+
+def _first_mover_city_item(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "city": row["city"],
+        "count": row["count"],
+        "density": float(row["density"]),
+        "ratio_vs_vancouver": float(row["ratio_vs_vancouver"]),
+        "source_status": row["source_status"],
+        "confidence_score": float(row["confidence_score"]),
+        "source_error": row.get("source_error"),
+        "source_refs": row["source_refs"],
     }
 
 

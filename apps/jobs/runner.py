@@ -1484,6 +1484,15 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _parse_utc_datetime(value: str | None) -> datetime | None:
+    if value is None or not value.strip():
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def adapter_for_name(name: str, limit: int) -> Any:
     if name in {"city_vancouver_licences", CityVancouverBusinessLicencesAdapter.name}:
         return CityVancouverBusinessLicencesAdapter(limit=limit)
@@ -1520,6 +1529,7 @@ def main() -> None:
             "neighborhood_assignment",
             "opportunity_analytics",
             "bundle_synthesis",
+            "bundle_global_signal",
             "proposition_synthesis",
             "peer_city_trends",
             "influence_scoring",
@@ -1533,6 +1543,8 @@ def main() -> None:
     )
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--people-csv", type=Path, default=None)
+    parser.add_argument("--now", type=str, default=None)
+    parser.add_argument("--window-days", type=int, default=90)
     args = parser.parse_args()
 
     if args.adapter in {"local_rss", "bc_gov_news_rss", "health_canada_recalls"}:
@@ -1574,6 +1586,18 @@ def main() -> None:
         from apps.jobs.analytics.bundles import run_bundle_synthesis
 
         print(_metrics_dict(run_bundle_synthesis()))
+        return
+    if args.adapter == "bundle_global_signal":
+        from apps.jobs.analytics.global_signal import run_bundle_global_signal
+
+        print(
+            _metrics_dict(
+                run_bundle_global_signal(
+                    now=_parse_utc_datetime(args.now),
+                    window_days=args.window_days,
+                )
+            )
+        )
         return
     if args.adapter == "proposition_synthesis":
         from apps.jobs.analytics.propositions import run_proposition_synthesis
@@ -1672,6 +1696,7 @@ def run_m3_sequence() -> dict[str, Any]:
     from apps.jobs.analytics.bundles import run_bundle_synthesis
     from apps.jobs.analytics.denominators import run_statcan_denominators
     from apps.jobs.analytics.entity_resolution import run_entity_resolution
+    from apps.jobs.analytics.global_signal import run_bundle_global_signal
     from apps.jobs.analytics.graph import run_graph_build
     from apps.jobs.analytics.influence import run_influence_scoring
     from apps.jobs.analytics.neighborhoods import run_neighborhood_assignment
@@ -1689,6 +1714,7 @@ def run_m3_sequence() -> dict[str, Any]:
     results["people_graph"] = _run_safely(run_graph_build)
     results["influence_scoring"] = _run_safely(run_influence_scoring)
     results["bundle_synthesis"] = _run_safely(run_bundle_synthesis)
+    results["bundle_global_signal"] = _run_safely(run_bundle_global_signal)
     return results
 
 

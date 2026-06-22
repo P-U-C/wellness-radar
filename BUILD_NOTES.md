@@ -635,6 +635,153 @@ Results:
 - Web unit tests: 9 passed.
 - Web build: passed; Vite still reports the existing large chunk warning.
 
+## R3 — Worldwide & First-mover
+
+Date: 2026-06-22 UTC
+
+Scope: backend/data only. Added `bundle_global_signal` analytics after bundle
+synthesis, with no frontend changes.
+
+### What Landed
+
+- Added migration `013_bundle_global.sql`:
+  - `bundle_global` stores each bundle's `worldwide_match` object and source refs.
+  - `bundle_first_mover_city` stores aggregate city counts/density/ratio rows only.
+  - Added `osm_overpass_first_mover` source rights row for reference-city aggregate
+    OSM/Overpass counts.
+  - Updated `gdelt_doc` rights notes for aggregate GDELT DOC timelinevol use.
+- Added `apps/jobs/analytics/global_signal.py`:
+  - Uses the existing R1 bundle taxonomy terms for GDELT query terms and
+    Overpass city count queries.
+  - Uses fixed first-mover cities: Austin, New York, Los Angeles, London,
+    Berlin, Toronto, plus Vancouver baseline.
+  - Cache-first via `raw_payload`; fixture fallback persists `source_status:
+    "fixture_fallback"` and the source error.
+  - First-mover rows are not canonical operators, do not use `operator`, and do
+    not run `bc_gate`.
+- Added runner command:
+  - `python3 -m apps.jobs.runner bundle_global_signal --now 2026-06-22T12:00:00Z`
+  - `run_m3_sequence()` now runs `bundle_global_signal` immediately after
+    `bundle_synthesis`.
+- Extended `GET /bundles/{id}` with:
+  - `worldwide_match`
+  - `first_mover_cities` ordered by `ratio_vs_vancouver DESC`.
+
+### Evidence Run
+
+The live auto verification attempt was stopped after network stalls in provider
+calls. The completed evidence run used explicit fixture-fallback mode and is
+therefore labeled as fixture-backed with reduced confidence.
+
+Commands:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m apps.jobs.runner bundle_synthesis
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar WR_BUNDLE_GLOBAL_MODE=fixture python3 -m apps.jobs.runner bundle_global_signal --now 2026-06-22T12:00:00Z
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar uvicorn apps.api.app.main:app --host 127.0.0.1 --port 8001
+```
+
+Results:
+
+- Bundle synthesis: `{'fetched': 357, 'persisted': 224, 'rejected': 0, 'errors': 0}`.
+- Bundle global signal: `{'fetched': 56, 'persisted': 56, 'rejected': 0, 'errors': 0}`.
+- DB coverage after run:
+  - `bundle_global`: 7 rows.
+  - `bundle_first_mover_city`: 49 rows.
+  - city row `source_status`: 49 `fixture_fallback`.
+  - `operator` rows containing `osm_overpass_first_mover`: 0.
+
+Real `GET /bundles/bundle_cold_plunge_contrast_therapy` excerpt:
+
+```json
+{
+  "id": "bundle_cold_plunge_contrast_therapy",
+  "label": "Cold plunge & contrast therapy",
+  "worldwide_match": {
+    "direction": "rising",
+    "value": 0.16,
+    "verdict": "emerging global attention",
+    "source_status": "fixture_fallback",
+    "confidence_score": 0.4169,
+    "source_errors": ["fixture mode requested", "fixture mode requested"],
+    "source_refs": [
+      {
+        "source_name": "gdelt_doc",
+        "source_record_id": "gdelt_cold_plunge_contrast_therapy_2026_03_24_2026_06_22_9ba75fd7ca31",
+        "trust_tier": "community"
+      },
+      {
+        "source_name": "osm_overpass_first_mover",
+        "source_record_id": "osm_first_mover_cold_plunge_contrast_therapy_austin_97f22081dd04",
+        "trust_tier": "community"
+      }
+    ]
+  },
+  "first_mover_cities": [
+    {
+      "city": "Austin",
+      "count": 9,
+      "density": 9.236,
+      "ratio_vs_vancouver": 1.2233,
+      "source_status": "fixture_fallback",
+      "confidence_score": 0.5,
+      "source_error": "fixture mode requested",
+      "source_refs": [
+        {
+          "source_name": "osm_overpass_first_mover",
+          "source_record_id": "osm_first_mover_cold_plunge_contrast_therapy_austin_97f22081dd04",
+          "trust_tier": "community"
+        }
+      ]
+    },
+    {
+      "city": "Vancouver",
+      "count": 5,
+      "density": 7.55,
+      "ratio_vs_vancouver": 1.0,
+      "source_status": "fixture_fallback",
+      "confidence_score": 0.5,
+      "source_error": "fixture mode requested",
+      "source_refs": [
+        {
+          "source_name": "osm_overpass_first_mover",
+          "source_record_id": "osm_first_mover_cold_plunge_contrast_therapy_vancouver_690919fd0365",
+          "trust_tier": "community"
+        }
+      ]
+    },
+    {
+      "city": "Los Angeles",
+      "count": 15,
+      "density": 3.8474,
+      "ratio_vs_vancouver": 0.5096,
+      "source_status": "fixture_fallback",
+      "confidence_score": 0.5,
+      "source_error": "fixture mode requested"
+    }
+  ]
+}
+```
+
+### Verified Commands
+
+```bash
+python3 -m pytest
+python3 -m ruff check .
+python3 -m mypy apps packages db
+pnpm build
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_r3_clean python3 -m db.migrate
+```
+
+Results:
+
+- Python tests: 71 passed.
+- Ruff: passed.
+- Mypy: passed for 86 source files.
+- Web build: passed with the existing Vite chunk-size warning.
+- Clean DB migrations applied from empty DB through `001`-`013`.
+
 ## R2 — Map
 
 Scope: frontend only. The home/Console route is now a places-first map surface
