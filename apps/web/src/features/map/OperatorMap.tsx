@@ -1,16 +1,23 @@
 import type { Feature, Point } from "geojson";
 import maplibregl from "maplibre-gl";
-import type { StyleSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Map, { Layer, Source, type LayerProps, type MapLayerMouseEvent, type MapRef } from "react-map-gl/maplibre";
+import Map, {
+  Layer,
+  Popup,
+  Source,
+  type LayerProps,
+  type MapLayerMouseEvent,
+  type MapRef
+} from "react-map-gl/maplibre";
 import type { Operator, OpportunityHeatmapCell, Signal } from "../../lib/api";
 import {
   BC_BBOX,
   heatmapToHexbinFeatureCollection,
+  isInBcBounds,
   operatorsToFeatureCollection,
   signalsToFeatureCollection
 } from "../../lib/geo";
-import { MAGMA, mapStyle as luminousMapStyle, surfaces, text } from "../../lib/theme";
+import { MAGMA, surfaces, text } from "../../lib/theme";
 
 export type MapLayers = {
   operators: boolean;
@@ -27,7 +34,10 @@ type Props = {
   selectedSignalId?: string | null;
   layers?: MapLayers;
   chrome?: boolean;
+  activeBundleLabel?: string | null;
+  fitKey?: string | null;
   onSelectOperator: (operatorId: string) => void;
+  onClearOperator?: () => void;
   onSelectSignal?: (signalId: string) => void;
 };
 
@@ -38,28 +48,18 @@ const emptyLayers: MapLayers = {
   opportunity: true
 };
 
-const darkStyle: StyleSpecification = {
-  version: 8,
-  sources: {},
-  layers: [
-    {
-      id: "background",
-      type: "background",
-      paint: { "background-color": luminousMapStyle.land }
-    }
-  ]
-} as const;
+const STREET_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 const clusterLayer: LayerProps = {
   id: "operator-clusters",
   type: "circle",
   filter: ["has", "point_count"],
   paint: {
-    "circle-color": luminousMapStyle.pin,
-    "circle-opacity": 0.78,
-    "circle-radius": ["step", ["get", "point_count"], 15, 25, 21, 80, 29],
-    "circle-stroke-color": surfaces.bg,
-    "circle-stroke-width": 2
+    "circle-color": ["step", ["get", "point_count"], "#0ea5e9", 25, "#0284c7", 80, "#0369a1"],
+    "circle-opacity": 0.9,
+    "circle-radius": ["step", ["get", "point_count"], 17, 25, 23, 80, 31],
+    "circle-stroke-color": "#ffffff",
+    "circle-stroke-width": 2.4
   }
 };
 
@@ -85,23 +85,18 @@ const pointLayer: LayerProps = {
     "circle-color": [
       "case",
       ["in", ["downcase", ["get", "status"]], ["literal", ["new", "planned", "permit"]]],
-      surfaces.bg,
-      luminousMapStyle.pin
+      "#f97316",
+      "#0ea5e9"
     ],
     "circle-radius": [
       "case",
       ["in", ["downcase", ["get", "status"]], ["literal", ["new", "planned", "permit"]]],
-      4.2,
-      luminousMapStyle.pinRadius
+      6.4,
+      7.4
     ],
     "circle-opacity": 0.96,
-    "circle-stroke-width": [
-      "case",
-      ["in", ["downcase", ["get", "status"]], ["literal", ["new", "planned", "permit"]]],
-      1.8,
-      0
-    ],
-    "circle-stroke-color": luminousMapStyle.pin
+    "circle-stroke-width": 2.2,
+    "circle-stroke-color": "#ffffff"
   }
 };
 
@@ -110,10 +105,10 @@ const selectedLayer: LayerProps = {
   type: "circle",
   filter: ["==", ["get", "id"], ""],
   paint: {
-    "circle-radius": 14,
+    "circle-radius": 16,
     "circle-color": "rgba(255,255,255,0)",
-    "circle-stroke-color": luminousMapStyle.selectRing,
-    "circle-stroke-width": 1.5
+    "circle-stroke-color": "#f59e0b",
+    "circle-stroke-width": 2.4
   }
 };
 
@@ -157,7 +152,7 @@ const heatmapLineLayer: LayerProps = {
       1,
       MAGMA[5]
     ],
-    "line-opacity": luminousMapStyle.hexStrokeOpacity,
+    "line-opacity": 0.72,
     "line-width": 0.7
   }
 };
@@ -194,7 +189,10 @@ export function OperatorMap({
   selectedSignalId = null,
   layers = emptyLayers,
   chrome = true,
+  activeBundleLabel = null,
+  fitKey = null,
   onSelectOperator,
+  onClearOperator,
   onSelectSignal
 }: Props) {
   const mapRef = useRef<MapRef | null>(null);
@@ -213,6 +211,7 @@ export function OperatorMap({
     [selectedOperatorId]
   );
   const selectedSignal = signals.find((signal) => signal.id === selectedSignalId) ?? null;
+  const selectedOperator = operators.find((item) => item.id === selectedOperatorId) ?? null;
   const selectedSignalCircleLayer = useMemo(
     () =>
       ({
@@ -228,6 +227,34 @@ export function OperatorMap({
     }
     mapRef.current?.flyTo({ center: [selectedSignal.lng, selectedSignal.lat], zoom: 13.4, duration: 650 });
   }, [selectedSignal]);
+
+  useEffect(() => {
+    if (!fitKey || selectedOperatorId) {
+      return;
+    }
+    const bounds = new maplibregl.LngLatBounds();
+    let pointCount = 0;
+    for (const operator of operators) {
+      if (!isInBcBounds(operator.lat, operator.lng)) {
+        continue;
+      }
+      bounds.extend([operator.lng, operator.lat]);
+      pointCount += 1;
+    }
+    if (pointCount === 0) {
+      return;
+    }
+    if (pointCount === 1) {
+      const center = bounds.getCenter();
+      mapRef.current?.flyTo({ center, zoom: 13.5, duration: 650 });
+      return;
+    }
+    mapRef.current?.fitBounds(bounds, {
+      padding: { top: 64, right: 64, bottom: 64, left: 64 },
+      maxZoom: 13.8,
+      duration: 700
+    });
+  }, [fitKey, operators, selectedOperatorId]);
 
   useEffect(() => {
     if (!selectedOperatorId || selectedSignalId) {
@@ -280,7 +307,7 @@ export function OperatorMap({
       <Map
         ref={mapRef}
         mapLib={maplibregl}
-        mapStyle={darkStyle}
+        mapStyle={STREET_STYLE_URL}
         initialViewState={{ longitude: -123.1207, latitude: 49.255, zoom: 10.3 }}
         maxBounds={[
           [BC_BBOX.minLng, BC_BBOX.minLat],
@@ -295,7 +322,7 @@ export function OperatorMap({
           setHoveredOperatorId(String(feature?.properties?.id ?? "") || null);
         }}
         onMouseLeave={() => setHoveredOperatorId(null)}
-        attributionControl={false}
+        attributionControl={{ compact: true }}
       >
         {layers.opportunity ? (
           <Source id="whitespace" type="geojson" data={heatmapData}>
@@ -317,19 +344,28 @@ export function OperatorMap({
             <Layer {...selectedOperatorLayer} />
           </Source>
         ) : null}
+        {selectedOperator && isInBcBounds(selectedOperator.lat, selectedOperator.lng) ? (
+          <Popup
+            className="wr-operator-popup"
+            longitude={selectedOperator.lng}
+            latitude={selectedOperator.lat}
+            anchor="bottom"
+            offset={18}
+            closeOnClick={false}
+            onClose={onClearOperator}
+          >
+            <OperatorPopup operator={selectedOperator} bundleLabel={activeBundleLabel} />
+          </Popup>
+        ) : null}
       </Map>
-      <div className="wr-map-grain" aria-hidden />
       {chrome ? (
         <>
           <div className="wr-map-legend">
-            <span>SIGNAL DENSITY / H3 HEXBIN</span>
-            <div>
-              <i />
-              <b>low to high</b>
-            </div>
+            <span>PLACES</span>
             <p>
               <span className="wr-pin-key" /> operator
-              <span className="wr-pin-key is-new" /> new
+              <span className="wr-pin-key is-new" /> planned
+              <span className="wr-cluster-key" /> cluster
             </p>
           </div>
           <div className="wr-zoom-control" aria-label="Map zoom controls">
@@ -351,9 +387,115 @@ export function OperatorMap({
       {chrome ? (
         <div className="wr-map-label" aria-hidden>
           <span>METRO VANCOUVER</span>
-          <b style={{ color: text.muted }}>LIVE MAPLIBRE</b>
+          <b style={{ color: text.muted }}>OPENFREEMAP / OSM</b>
         </div>
       ) : null}
     </section>
   );
+}
+
+function OperatorPopup({ operator, bundleLabel }: { operator: Operator; bundleLabel: string | null }) {
+  const contacts = operatorPopupContacts(operator);
+  return (
+    <div className="wr-popup-card">
+      <div className="wr-popup-head">
+        <strong>{operator.name}</strong>
+        <span>{sentenceLabel(operator.status)}</span>
+      </div>
+      <div className="wr-popup-meta">
+        <span>{bundleLabel ?? sentenceLabel(operator.categories[0] ?? "wellness")}</span>
+        <span>{operator.neighborhood ?? operator.municipality ?? "Metro Vancouver"}</span>
+      </div>
+      {operator.address ? <p>{operator.address}</p> : null}
+      {contacts.length > 0 ? (
+        <div className="wr-popup-contacts">
+          {contacts.map((contact) => (
+            <a key={`${contact.type}:${contact.value}`} href={contact.href} target={contact.external ? "_blank" : undefined} rel={contact.external ? "noreferrer" : undefined}>
+              {contact.label}
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function operatorPopupContacts(operator: Operator): Array<{
+  type: string;
+  label: string;
+  value: string;
+  href: string;
+  external: boolean;
+}> {
+  const rows = new globalThis.Map<
+    string,
+    { type: string; label: string; value: string; href: string; external: boolean }
+  >();
+
+  function add(type: string | undefined, value: string | null | undefined, platform?: string | null) {
+    if (!type || !value) {
+      return;
+    }
+    const normalizedType = type.toLowerCase();
+    const href = contactHref(normalizedType, value);
+    if (!href) {
+      return;
+    }
+    const key = `${normalizedType}:${value}`;
+    rows.set(key, {
+      type: normalizedType,
+      label: platform ? sentenceLabel(platform) : contactLabel(normalizedType),
+      value,
+      href,
+      external: normalizedType === "website" || normalizedType === "social"
+    });
+  }
+
+  for (const contact of operator.contacts ?? []) {
+    add(contact.contact_type ?? contact.type, contact.value, contact.platform);
+  }
+  add("phone", operator.phone);
+  add("website", operator.website);
+  for (const [platform, value] of Object.entries(operator.social_links ?? {})) {
+    add("social", String(value), platform);
+  }
+
+  return Array.from(rows.values()).slice(0, 5);
+}
+
+function contactHref(type: string, value: string): string | null {
+  if (type === "phone") {
+    const compact = value.replace(/[^\d+]/g, "");
+    return compact ? `tel:${compact}` : null;
+  }
+  if (type === "email") {
+    return `mailto:${value}`;
+  }
+  if (type === "website" || type === "social") {
+    return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  }
+  return null;
+}
+
+function contactLabel(type: string): string {
+  switch (type) {
+    case "phone":
+      return "Call";
+    case "email":
+      return "Email";
+    case "website":
+      return "Website";
+    case "social":
+      return "Social";
+    default:
+      return sentenceLabel(type);
+  }
+}
+
+function sentenceLabel(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\bIv\b/g, "IV");
 }
