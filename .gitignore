@@ -36,5 +36,5 @@ codex-design.log
 .codex-intel-prompt*.md
 .codex-intel-runner.sh
 codex-intel.log
-.codex-intel-cm*-done
-.codex-intel-cm*-failed
+.codex-intel-*-done
+.codex-intel-*-failed
