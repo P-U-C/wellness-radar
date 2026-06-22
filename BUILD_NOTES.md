@@ -635,6 +635,24 @@ Results:
 - Web unit tests: 9 passed.
 - Web build: passed; Vite still reports the existing large chunk warning.
 
+## R2 — Map
+
+Scope: frontend only. The home/Console route is now a places-first map surface
+with a ranked bundle rail and selected-bundle detail panel.
+
+- Basemap source: MapLibre GL renders the free, no-key OpenFreeMap Liberty
+  vector style at `https://tiles.openfreemap.org/styles/liberty`; map
+  attribution remains enabled.
+- Pins and clustering render from `GET /operators`. Source-backed operators
+  inside the Metro Vancouver client bounds become clustered map pins; clicking a
+  cluster zooms in, and clicking a pin opens a popup with name, category or
+  selected bundle, address, status, and public contact links.
+- Bundle cards render from `GET /bundles`. Selecting a bundle filters the map
+  to `GET /bundles/{id}` members, frames those pins, and shows the bundle score
+  components, geography rows, and top people with why-they-appear text.
+- Operators lacking usable lat/lng are omitted from the map and counted in the
+  bundle rail/coverage panel. The UI still requires source refs before display.
+
 ## R1 — Bundles
 
 Scope: backend/API only. Added deterministic bundle synthesis from canonical operator
