@@ -40,6 +40,66 @@ export type Operator = {
   freshness_age_hours?: number | null;
 };
 
+export type BundleGeoConcentration = {
+  geo_level: string;
+  geo_name: string;
+  municipality?: string | null;
+  member_count: number;
+  population?: number | null;
+  density?: number | null;
+  source_refs?: SourceRef[];
+};
+
+export type BundleGeography = {
+  bundle_density_per_10000_population?: number;
+  demand_proxy?: number;
+  concentrations?: BundleGeoConcentration[];
+  municipalities?: BundleGeoConcentration[];
+};
+
+export type BundleSummary = {
+  id: string;
+  label: string;
+  slug: string;
+  bundle_score: number;
+  score: number;
+  components: Record<string, unknown>;
+  geography: BundleGeography;
+  member_count: number;
+  supporting_signals: Array<Record<string, unknown>>;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  generated_at: string;
+  freshness_at: string;
+  freshness_age_hours: number | null;
+};
+
+export type BundleMember = Operator & {
+  match_reasons: Record<string, unknown>;
+  membership_confidence_score: number;
+};
+
+export type BundlePerson = {
+  id: string;
+  name: string;
+  roles: string[];
+  primary_role: string | null;
+  primary_affiliation: string | null;
+  rank: number;
+  influence_score: number | null;
+  why_appears: string;
+  public_profiles: Record<string, unknown>;
+  confidence_score: number;
+  source_refs: SourceRef[];
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
+};
+
+export type BundleDetail = BundleSummary & {
+  members: BundleMember[];
+  top_people: BundlePerson[];
+};
+
 export type Signal = {
   id: string;
   type: string;
@@ -399,6 +459,18 @@ export async function fetchOperators(category?: string): Promise<Operator[]> {
     return [];
   }
   return data.items;
+}
+
+export async function fetchBundles(): Promise<BundleSummary[]> {
+  const data = await getJson<{ items: BundleSummary[] }>("/bundles?limit=20");
+  return data?.items ?? [];
+}
+
+export async function fetchBundle(bundleId: string): Promise<BundleDetail | null> {
+  if (!bundleId) {
+    return null;
+  }
+  return getJson<BundleDetail>(`/bundles/${encodeURIComponent(bundleId)}`);
 }
 
 export async function fetchSignals(operatorId?: string): Promise<Signal[]> {
