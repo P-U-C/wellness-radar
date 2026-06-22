@@ -594,6 +594,12 @@ def run_opportunity_analytics(
                 max_activity = max(max_activity, signal_count)
                 new_operators = sum(1 for operator in operators if operator["is_new_180d"])
                 max_growth = max(max_growth, new_operators)
+                nearest_competitors = _competitors_within_radius(
+                    category_operators,
+                    _optional_float(geo["lat"]),
+                    _optional_float(geo["lng"]),
+                    COMPETITOR_RADIUS_KM,
+                )
                 raw_rows.append(
                     {
                         "geo": geo,
@@ -604,12 +610,8 @@ def run_opportunity_analytics(
                         "signal_conf": signal_conf,
                         "density": density,
                         "new_operators": new_operators,
-                        "competitor_count_within_radius": _competitor_count_within_radius(
-                            category_operators,
-                            _optional_float(geo["lat"]),
-                            _optional_float(geo["lng"]),
-                            COMPETITOR_RADIUS_KM,
-                        ),
+                        "nearest_competitors": nearest_competitors,
+                        "competitor_count_within_radius": len(nearest_competitors),
                         "competitor_radius_km": COMPETITOR_RADIUS_KM,
                         "demand": _demand_metadata(
                             geography_payload=geo.get("geography_payload"),
@@ -730,6 +732,7 @@ def _payload_for_cell(
                 "competitor_count_within_radius", supply_count
             ),
             "competitor_radius_km": row.get("competitor_radius_km", COMPETITOR_RADIUS_KM),
+            "nearest_competitors": row.get("nearest_competitors", []),
             "demand_source": demand.get("demand_source", "unknown"),
             "demand_source_status": demand.get("demand_source_status", "unknown"),
             "denominator_scope": demand.get("denominator_scope", geo["geo_level"]),
@@ -833,6 +836,12 @@ def _neighborhood_rows_for_category(
                 *operator_refs,
             ]
         )
+        nearest_competitors = _competitors_within_radius(
+            category_operators,
+            lat,
+            lng,
+            COMPETITOR_RADIUS_KM,
+        )
         geography_confidence = _clamp(
             _average(
                 [
@@ -918,12 +927,8 @@ def _neighborhood_rows_for_category(
                 "signal_conf": signal_conf,
                 "density": density,
                 "new_operators": new_operators,
-                "competitor_count_within_radius": _competitor_count_within_radius(
-                    category_operators,
-                    lat,
-                    lng,
-                    COMPETITOR_RADIUS_KM,
-                ),
+                "nearest_competitors": nearest_competitors,
+                "competitor_count_within_radius": len(nearest_competitors),
                 "competitor_radius_km": COMPETITOR_RADIUS_KM,
                 "demand": _demand_metadata(
                     geography_payload=geo["geography_payload"],
@@ -970,6 +975,39 @@ def _operators_for_csd(
         if _key(operator.get("municipality")) == geo_key
         or _key(operator.get("neighborhood")) == geo_key
     ]
+
+
+def _competitors_within_radius(
+    operators: Sequence[dict[str, Any]],
+    lat: float | None,
+    lng: float | None,
+    radius_km: float,
+) -> list[dict[str, Any]]:
+    if lat is None or lng is None:
+        return []
+    competitors: list[dict[str, Any]] = []
+    for operator in operators:
+        operator_lat = _optional_float(operator.get("lat"))
+        operator_lng = _optional_float(operator.get("lng"))
+        if operator_lat is None or operator_lng is None:
+            continue
+        distance_km = _haversine_km(lat, lng, operator_lat, operator_lng)
+        if distance_km > radius_km:
+            continue
+        competitors.append(
+            {
+                "operator_id": str(operator["id"]),
+                "name": str(operator["name"]),
+                "distance_km": round(distance_km, 2),
+                "municipality": operator.get("municipality"),
+                "neighborhood": operator.get("neighborhood"),
+                "source_refs": _unique_refs(operator.get("source_refs") or []),
+            }
+        )
+    return sorted(
+        competitors,
+        key=lambda item: (float(item["distance_km"]), str(item["name"]).lower()),
+    )
 
 
 def _competitor_count_within_radius(

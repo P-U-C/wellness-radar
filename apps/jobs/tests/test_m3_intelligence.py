@@ -76,6 +76,16 @@ def test_proposition_template_exposes_raw_demand_and_sources() -> None:
             "trace_payload": {
                 "competitor_count_within_radius": 3,
                 "competitor_radius_km": 4.0,
+                "nearest_competitors": [
+                    {
+                        "operator_id": "op_aetherhaus",
+                        "name": "AetherHaus",
+                        "distance_km": 1.2,
+                        "municipality": "Vancouver",
+                        "neighborhood": "West End",
+                        "source_refs": source_refs,
+                    }
+                ],
                 "demand_source": "statcan_wds_fixture",
                 "demand_source_status": "fixture_fallback",
                 "raw_parent_population": 662248,
@@ -85,11 +95,20 @@ def test_proposition_template_exposes_raw_demand_and_sources() -> None:
         }
     )
 
-    assert proposition["headline"] == "Open recovery and contrast therapy in Mount Pleasant"
+    assert proposition["headline"] == (
+        "Mount Pleasant: source-backed recovery and contrast therapy whitespace"
+    )
     assert proposition["competitor_count_within_radius"] == 3
+    assert proposition["nearest_competitors"][0]["name"] == "AetherHaus"
     assert proposition["population"] == 44149.8667
-    assert proposition["source_refs"] == source_refs
-    assert "fixture_fallback" in proposition["summary"]
+    assert proposition["market_sizing_line"].startswith("Market sizing proxy:")
+    assert "AetherHaus" in proposition["thesis"]
+    assert "fixture-backed" in proposition["confidence_narrative"]
+    assert proposition["confidence_score"] < 0.63
+    assert any(
+        ref["source_name"] == "statcan_survey_household_spending"
+        for ref in proposition["source_refs"]
+    )
 
 
 def test_peer_city_trends_fixture_is_stub_backed_and_deterministic() -> None:

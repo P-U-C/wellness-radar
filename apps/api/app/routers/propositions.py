@@ -7,16 +7,19 @@ from fastapi import APIRouter, Query
 from apps.api.app.db.connection import get_connection
 from apps.api.app.services.freshness import age_hours
 
-router = APIRouter(prefix="/propositions", tags=["propositions"])
+router = APIRouter(tags=["propositions"])
+MAX_PROPOSITION_LIMIT = 100
 
 
-@router.get("")
+@router.get("/propositions")
+@router.get("/api/propositions")
 def propositions(
     category: str | None = Query(default=None),
     geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),
     municipality: str | None = Query(default=None),
-    limit: int = Query(default=25, ge=1, le=100),
+    limit: int = Query(default=25, ge=1),
 ) -> dict[str, Any]:
+    active_limit = min(limit, MAX_PROPOSITION_LIMIT)
     clauses = ["jsonb_array_length(prop.source_refs) > 0"]
     params: list[Any] = []
     if category:
@@ -30,7 +33,7 @@ def propositions(
             "lower(COALESCE(prop.municipality, prop.geo_name, '')) = lower(%s)"
         )
         params.append(municipality)
-    params.append(limit)
+    params.append(active_limit)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
@@ -51,6 +54,12 @@ def propositions(
                   prop.population,
                   prop.business_count,
                   prop.demand_source,
+                  prop.thesis,
+                  prop.market_sizing_line,
+                  prop.spend_proxy_label,
+                  prop.spend_proxy_value,
+                  prop.nearest_competitors,
+                  prop.confidence_narrative,
                   prop.supporting_signals,
                   prop.component_breakdown,
                   prop.opportunity_score,
@@ -69,7 +78,15 @@ def propositions(
                 params,
             ).fetchall(),
         )
-    return {"items": [_proposition_item(row) for row in rows], "meta": {"count": len(rows)}}
+    return {
+        "items": [_proposition_item(row) for row in rows],
+        "meta": {
+            "count": len(rows),
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_PROPOSITION_LIMIT,
+        },
+    }
 
 
 def _proposition_item(row: dict[str, Any]) -> dict[str, Any]:
@@ -91,6 +108,14 @@ def _proposition_item(row: dict[str, Any]) -> dict[str, Any]:
             float(row["business_count"]) if row["business_count"] is not None else None
         ),
         "demand_source": row["demand_source"],
+        "thesis": row.get("thesis") or row["summary"],
+        "market_sizing_line": row.get("market_sizing_line"),
+        "spend_proxy_label": row.get("spend_proxy_label"),
+        "spend_proxy_value": (
+            float(row["spend_proxy_value"]) if row.get("spend_proxy_value") is not None else None
+        ),
+        "nearest_competitors": row.get("nearest_competitors") or [],
+        "confidence_narrative": row.get("confidence_narrative"),
         "supporting_signals": row["supporting_signals"],
         "component_breakdown": row["component_breakdown"],
         "opportunity_score": float(row["opportunity_score"]),

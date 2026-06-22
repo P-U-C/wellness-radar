@@ -1584,15 +1584,25 @@ def main() -> None:
         print(_metrics_dict(run_influence_scoring()))
         return
     if args.adapter == "daily_brief":
-        from apps.jobs.analytics.daily_brief import generate_daily_brief
+        from apps.jobs.analytics.daily_brief import backfill_daily_brief_history
 
-        brief = generate_daily_brief(window_hours=72)
+        briefs = backfill_daily_brief_history(window_hours=72)
+        brief = briefs[-1]
         print(
             {
                 "brief_id": brief.brief_id,
                 "brief_date": brief.brief_date.isoformat(),
                 "status": brief.status,
                 "counts": brief.counts,
+                "history": [
+                    {
+                        "brief_id": item.brief_id,
+                        "brief_date": item.brief_date.isoformat(),
+                        "status": item.status,
+                        "top_actions": len(item.top_actions),
+                    }
+                    for item in briefs
+                ],
             }
         )
         return
@@ -1667,34 +1677,54 @@ def run_m3_sequence() -> dict[str, Any]:
 
 
 def run_cm3_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[str, Any]:
-    from apps.jobs.analytics.daily_brief import generate_daily_brief
+    from apps.jobs.analytics.daily_brief import backfill_daily_brief_history
     from apps.jobs.analytics.propositions import run_proposition_synthesis
 
     results: dict[str, Any] = {}
     results["cm2"] = run_cm2_sequence(limit=limit, people_csv=people_csv)
     results["proposition_synthesis"] = _run_safely(run_proposition_synthesis)
-    brief = generate_daily_brief(window_hours=72)
+    briefs = backfill_daily_brief_history(window_hours=72)
+    brief = briefs[-1]
     results["daily_brief"] = {
         "brief_id": brief.brief_id,
         "brief_date": brief.brief_date.isoformat(),
         "status": brief.status,
         "counts": brief.counts,
+        "history": [
+            {
+                "brief_id": item.brief_id,
+                "brief_date": item.brief_date.isoformat(),
+                "status": item.status,
+                "top_actions": len(item.top_actions),
+            }
+            for item in briefs
+        ],
     }
     return results
 
 
 def run_cm2_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[str, Any]:
-    from apps.jobs.analytics.daily_brief import generate_daily_brief
+    from apps.jobs.analytics.daily_brief import backfill_daily_brief_history
 
     results: dict[str, Any] = {}
     results["m2"] = run_m2_sequence(limit=limit, people_csv=people_csv)
     results["m3"] = run_m3_sequence()
-    brief = generate_daily_brief(window_hours=72)
+    briefs = backfill_daily_brief_history(window_hours=72)
+    brief = briefs[-1]
     results["daily_brief"] = {
         "brief_id": brief.brief_id,
         "brief_date": brief.brief_date.isoformat(),
         "status": brief.status,
         "counts": brief.counts,
+        "history": [
+            {
+                "brief_id": item.brief_id,
+                "brief_date": item.brief_date.isoformat(),
+                "status": item.status,
+                "top_actions": len(item.top_actions),
+            }
+            for item in briefs
+        ],
     }
     return results
 

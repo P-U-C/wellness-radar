@@ -3,16 +3,19 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from apps.api.app.db.connection import get_connection
 from apps.api.app.services.freshness import age_hours
 
 router = APIRouter(prefix="/api/brief", tags=["brief"])
+MAX_BRIEF_HISTORY_LIMIT = 30
 
 
 @router.get("")
-def latest_brief() -> dict[str, Any]:
+def latest_brief(limit: int | None = Query(default=None, ge=1)) -> dict[str, Any]:
+    if limit is not None:
+        return recent_briefs(limit=limit)
     with get_connection() as conn:
         row = cast(
             dict[str, Any] | None,
@@ -40,6 +43,45 @@ def latest_brief() -> dict[str, Any]:
     if not row:
         raise HTTPException(status_code=404, detail="daily brief not found")
     return _brief_row(row)
+
+
+@router.get("/recent")
+def recent_briefs(limit: int = Query(default=7, ge=1)) -> dict[str, Any]:
+    active_limit = min(limit, MAX_BRIEF_HISTORY_LIMIT)
+    with get_connection() as conn:
+        rows = cast(
+            list[dict[str, Any]],
+            conn.execute(
+                """
+                SELECT
+                  id,
+                  brief_date,
+                  generated_at,
+                  window_start,
+                  window_end,
+                  status,
+                  brief_text,
+                  sections,
+                  top_actions,
+                  counts,
+                  source_refs,
+                  narrative_model
+                FROM daily_brief
+                ORDER BY brief_date DESC, generated_at DESC
+                LIMIT %s
+                """,
+                (active_limit,),
+            ).fetchall(),
+        )
+    return {
+        "items": [_brief_row(row) for row in rows],
+        "meta": {
+            "count": len(rows),
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_BRIEF_HISTORY_LIMIT,
+        },
+    }
 
 
 @router.get("/{brief_date}")

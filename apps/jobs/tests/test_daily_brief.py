@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from apps.jobs.analytics.daily_brief import (
     _assert_source_backed_sections,
     _top_actions,
+    _window_start,
     build_deterministic_brief_text,
 )
 
@@ -120,3 +122,12 @@ def test_brief_sections_reject_unbacked_items() -> None:
                 ]
             }
         )
+
+
+def test_window_start_covers_at_least_24_hours_after_same_day_regeneration() -> None:
+    window_end = datetime(2026, 6, 22, 12, 0, tzinfo=timezone.utc)
+    previous = {"generated_at": datetime(2026, 6, 22, 11, 55, tzinfo=timezone.utc)}
+
+    start = _window_start(previous, window_end=window_end, configured_hours=1)
+
+    assert start == datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
