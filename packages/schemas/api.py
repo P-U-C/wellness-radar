@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PageMeta(BaseModel):
@@ -112,6 +112,30 @@ class BundlePersonItem(BaseModel):
     freshness_age_hours: float | None
 
 
+class BundleWorldwideMatch(BaseModel):
+    direction: str
+    value: float
+    verdict: str
+    source_status: str
+    confidence_score: float | None = None
+    window_days: int | None = None
+    methodology_version: str | None = None
+    components: dict[str, Any] = Field(default_factory=dict)
+    source_errors: list[str] = Field(default_factory=list)
+    source_refs: list[dict[str, Any]]
+
+
+class BundleFirstMoverCityItem(BaseModel):
+    city: str
+    count: int
+    density: float
+    ratio_vs_vancouver: float
+    source_status: str
+    confidence_score: float
+    source_error: str | None = None
+    source_refs: list[dict[str, Any]]
+
+
 class BundlesResponse(BaseModel):
     items: list[BundleSummaryItem]
     meta: dict[str, Any]
@@ -120,3 +144,5 @@ class BundlesResponse(BaseModel):
 class BundleDetailResponse(BundleSummaryItem):
     members: list[BundleMemberItem]
     top_people: list[BundlePersonItem]
+    worldwide_match: BundleWorldwideMatch | None = None
+    first_mover_cities: list[BundleFirstMoverCityItem] = Field(default_factory=list)
