@@ -195,6 +195,10 @@ class DatabaseNeighborhoodRepository(DatabaseRepository):
               FROM "operator" op
               JOIN neighborhood_boundary boundary
                 ON ST_Covers(boundary.geom::geometry, op.geom::geometry)
+                -- Only assign a neighborhood from the operator's OWN municipality.
+                -- Otherwise a border point gets a neighbouring city's local-area name
+                -- (e.g. a Richmond operator labelled "Marpole"), poisoning gap scores.
+                AND lower(COALESCE(op.municipality, '')) = lower(boundary.municipality)
               WHERE op.geom IS NOT NULL
                 AND jsonb_array_length(op.source_refs) > 0
                 AND (op.neighborhood IS NULL OR trim(op.neighborhood) = '')
@@ -282,6 +286,9 @@ class DatabaseNeighborhoodRepository(DatabaseRepository):
               WHERE op.geom IS NOT NULL
                 AND jsonb_array_length(op.source_refs) > 0
                 AND (op.neighborhood IS NULL OR trim(op.neighborhood) = '')
+                -- Same-municipality only: never approximate an operator into a
+                -- different city's neighborhood (e.g. Surrey -> Central Port Coquitlam).
+                AND lower(COALESCE(op.municipality, '')) = lower(COALESCE(centroid.municipality, ''))
             ),
             picked AS (
               SELECT * FROM candidate WHERE rank = 1
