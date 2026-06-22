@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections import defaultdict
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
 from apps.jobs.runner import DatabaseRepository, RunMetrics
+from packages.geo.bc_gate import CanonicalGeoRecord, bc_gate
 from packages.shared.ids import stable_id
 
 OPPORTUNITY_METHOD = (
@@ -16,6 +18,14 @@ OPPORTUNITY_METHOD = (
     "+ 0.05 source_confidence. White-space means a supply-demand signal, not "
     "guaranteed economic attractiveness."
 )
+NEIGHBORHOOD_METHOD = (
+    "CM3 neighborhood extension: supply is counted from BC-gated operators carrying "
+    "neighborhood tags. Population and business denominators are allocated from the "
+    "parent CSD when no official neighborhood denominator exists; raw parent values "
+    "and allocation share are exposed in trace_payload."
+)
+DERIVED_NEIGHBORHOOD_SOURCE = "derived_neighborhood_analytics"
+COMPETITOR_RADIUS_KM = 4.0
 
 
 @dataclass(frozen=True)
@@ -77,10 +87,12 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                   ST_X(g.geom::geometry) AS lng,
                   g.source_refs AS geography_source_refs,
                   g.confidence_score AS geography_confidence,
+                  g.payload AS geography_payload,
                   pop.id AS population_denominator_id,
                   pop.value AS population,
                   pop.source_refs AS population_source_refs,
-                  pop.confidence_score AS population_confidence
+                  pop.confidence_score AS population_confidence,
+                  pop.payload AS population_payload
                 FROM statcan_geography g
                 JOIN statcan_denominator pop
                   ON pop.geo_code = g.geo_code
@@ -97,6 +109,7 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
             self.conn.execute(
                 """
                 SELECT id, value, source_refs, confidence_score
+                     , payload
                 FROM statcan_denominator
                 WHERE geo_code = %s
                   AND metric = 'business_count'
@@ -120,6 +133,10 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                   name,
                   source_refs,
                   confidence_score,
+                  municipality,
+                  neighborhood,
+                  ST_Y(geom::geometry) AS lat,
+                  ST_X(geom::geometry) AS lng,
                   first_seen_at,
                   first_seen_at >= now() - interval '180 days' AS is_new_180d
                 FROM "operator"
@@ -134,6 +151,137 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                 (category, geo_name, geo_name, like_geo),
             ).fetchall()
         )
+
+    def operators_for_category(self, category: str) -> list[dict[str, Any]]:
+        return list(
+            self.conn.execute(
+                """
+                SELECT
+                  id,
+                  name,
+                  source_refs,
+                  confidence_score,
+                  municipality,
+                  neighborhood,
+                  ST_Y(geom::geometry) AS lat,
+                  ST_X(geom::geometry) AS lng,
+                  first_seen_at,
+                  first_seen_at >= now() - interval '180 days' AS is_new_180d
+                FROM "operator"
+                WHERE %s = ANY(categories)
+                  AND jsonb_array_length(source_refs) > 0
+                ORDER BY first_seen_at DESC, name ASC
+                """,
+                (category,),
+            ).fetchall()
+        )
+
+    def operators_with_neighborhoods(self) -> list[dict[str, Any]]:
+        return list(
+            self.conn.execute(
+                """
+                SELECT
+                  id,
+                  municipality,
+                  neighborhood,
+                  ST_Y(geom::geometry) AS lat,
+                  ST_X(geom::geometry) AS lng,
+                  source_refs,
+                  confidence_score
+                FROM "operator"
+                WHERE neighborhood IS NOT NULL
+                  AND trim(neighborhood) <> ''
+                  AND municipality IS NOT NULL
+                  AND trim(municipality) <> ''
+                  AND jsonb_array_length(source_refs) > 0
+                """
+            ).fetchall()
+        )
+
+    def upsert_neighborhood_geography(self, payload: dict[str, Any]) -> bool:
+        gate = bc_gate(
+            CanonicalGeoRecord(
+                source_name=DERIVED_NEIGHBORHOOD_SOURCE,
+                title=str(payload["geo_name"]),
+                address=None,
+                municipality=payload["municipality"],
+                province="BC",
+                country="CA",
+                lat=payload["lat"],
+                lng=payload["lng"],
+                text=f"{payload['geo_name']}, {payload['municipality']}, BC",
+                statcan_geo_code=payload["parent_geo_code"],
+                raw=payload,
+            )
+        )
+        if not gate.passes:
+            return False
+        self.conn.execute(
+            """
+            INSERT INTO statcan_geography (
+              geo_code,
+              geo_level,
+              geo_name,
+              parent_geo_code,
+              geom,
+              source_name,
+              source_refs,
+              confidence_score,
+              bc_gate_result,
+              payload
+            )
+            VALUES (
+              %s,
+              'neighborhood',
+              %s,
+              %s,
+              CASE WHEN %s::double precision IS NULL OR %s::double precision IS NULL
+                THEN NULL
+                ELSE ST_SetSRID(
+                  ST_MakePoint(%s::double precision, %s::double precision),
+                  4326
+                )::geography
+              END,
+              %s,
+              %s,
+              %s,
+              %s,
+              %s
+            )
+            ON CONFLICT (geo_code) DO UPDATE SET
+              geo_level = EXCLUDED.geo_level,
+              geo_name = EXCLUDED.geo_name,
+              parent_geo_code = EXCLUDED.parent_geo_code,
+              geom = EXCLUDED.geom,
+              source_name = EXCLUDED.source_name,
+              source_refs = EXCLUDED.source_refs,
+              confidence_score = EXCLUDED.confidence_score,
+              bc_gate_result = EXCLUDED.bc_gate_result,
+              payload = EXCLUDED.payload,
+              updated_at = now()
+            """,
+            (
+                payload["geo_code"],
+                payload["geo_name"],
+                payload["parent_geo_code"],
+                payload["lng"],
+                payload["lat"],
+                payload["lng"],
+                payload["lat"],
+                DERIVED_NEIGHBORHOOD_SOURCE,
+                Jsonb(payload["source_refs"]),
+                payload["confidence_score"],
+                Jsonb(
+                    {
+                        "passes": gate.passes,
+                        "reason": gate.reason,
+                        "confidence": gate.confidence,
+                    }
+                ),
+                Jsonb(payload["payload"]),
+            ),
+        )
+        return True
 
     def signal_count_for_geo_category(
         self, geo_name: str, category: str, days: int
@@ -321,6 +469,7 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
               category,
               geo_code,
               geo_name,
+              geo_level,
               opportunity_score,
               component_breakdown,
               source_refs,
@@ -328,8 +477,9 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
               calculation_method,
               caveat
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (category, geo_code) DO UPDATE SET
+              geo_level = EXCLUDED.geo_level,
               opportunity_score = EXCLUDED.opportunity_score,
               component_breakdown = EXCLUDED.component_breakdown,
               source_refs = EXCLUDED.source_refs,
@@ -343,6 +493,7 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                 payload["category"],
                 payload["geo_code"],
                 payload["geo_name"],
+                payload["geo_level"],
                 payload["opportunity_score"],
                 Jsonb(payload["component_breakdown"]),
                 Jsonb(payload["source_refs"]),
@@ -417,10 +568,13 @@ def run_opportunity_analytics(
     try:
         categories = repo.categories_with_denominators()
         geographies = repo.geographies()
-        metrics.records_fetched = len(categories) * len(geographies)
         max_population = max((float(geo["population"]) for geo in geographies), default=1.0)
+        neighborhood_denominator = _neighborhood_denominator_context(
+            repo.operators_with_neighborhoods()
+        )
 
         for category in categories:
+            category_operators = repo.operators_for_category(category)
             raw_rows: list[dict[str, Any]] = []
             max_density = 0.0
             max_activity = 0
@@ -429,7 +583,7 @@ def run_opportunity_analytics(
                 denominator = repo.business_denominator(str(geo["geo_code"]), category)
                 if denominator is None:
                     continue
-                operators = repo.operators_for_geo_category(str(geo["geo_name"]), category)
+                operators = _operators_for_csd(category_operators, str(geo["geo_name"]))
                 signal_count, signal_refs, signal_conf = repo.signal_count_for_geo_category(
                     str(geo["geo_name"]), category, 180
                 )
@@ -450,8 +604,34 @@ def run_opportunity_analytics(
                         "signal_conf": signal_conf,
                         "density": density,
                         "new_operators": new_operators,
+                        "competitor_count_within_radius": _competitor_count_within_radius(
+                            category_operators,
+                            _optional_float(geo["lat"]),
+                            _optional_float(geo["lng"]),
+                            COMPETITOR_RADIUS_KM,
+                        ),
+                        "competitor_radius_km": COMPETITOR_RADIUS_KM,
+                        "demand": _demand_metadata(
+                            geography_payload=geo.get("geography_payload"),
+                            population_payload=geo.get("population_payload"),
+                            business_payload=denominator.get("payload"),
+                            denominator_scope="CSD",
+                        ),
                     }
                 )
+            neighborhood_rows = _neighborhood_rows_for_category(
+                repo=repo,
+                category=category,
+                category_operators=category_operators,
+                csd_geographies=geographies,
+                neighborhood_context=neighborhood_denominator,
+            )
+            for row in neighborhood_rows:
+                max_density = max(max_density, float(row["density"]))
+                max_activity = max(max_activity, int(row["signal_count"]))
+                max_growth = max(max_growth, int(row["new_operators"]))
+            raw_rows.extend(neighborhood_rows)
+            metrics.records_fetched += len(raw_rows)
             for row in raw_rows:
                 payload = _payload_for_cell(
                     category=category,
@@ -501,6 +681,7 @@ def _payload_for_cell(
     target_demo_fit = _clamp((demand_proxy + business_density) / 2)
     transit_access = _core_access_proxy(geo["lat"], geo["lng"])
     event_community_activity = _clamp(row["signal_count"] / max(max_activity, 1))
+    demand = row.get("demand", {})
     confidences = [
         float(geo["geography_confidence"]),
         float(geo["population_confidence"]),
@@ -508,7 +689,10 @@ def _payload_for_cell(
         *[float(operator["confidence_score"]) for operator in operators],
         *row["signal_conf"],
     ]
-    source_confidence = _average(confidences, default=0.5)
+    source_confidence = _average(confidences, default=0.5) * float(
+        demand.get("quality_multiplier", 1.0)
+    )
+    source_confidence = _clamp(source_confidence)
     components = ScoreComponents(
         demand_proxy=round(demand_proxy, 4),
         low_supply_density=round(low_supply_density, 4),
@@ -528,15 +712,35 @@ def _payload_for_cell(
             *row["signal_refs"],
         ]
     )
+    calculation_method = (
+        f"{OPPORTUNITY_METHOD} {NEIGHBORHOOD_METHOD}"
+        if str(geo["geo_level"]) == "neighborhood"
+        else OPPORTUNITY_METHOD
+    )
     component_breakdown = {
         **components.as_dict(),
-        "formula": OPPORTUNITY_METHOD,
+        "formula": calculation_method,
         "inputs": {
             "population_denominator_id": geo["population_denominator_id"],
             "business_denominator_id": denominator["id"],
             "operator_ids": operator_ids,
             "signal_count_180d": row["signal_count"],
             "supply_density_per_10000_population": round(row["density"], 4),
+            "competitor_count_within_radius": row.get(
+                "competitor_count_within_radius", supply_count
+            ),
+            "competitor_radius_km": row.get("competitor_radius_km", COMPETITOR_RADIUS_KM),
+            "demand_source": demand.get("demand_source", "unknown"),
+            "demand_source_status": demand.get("demand_source_status", "unknown"),
+            "denominator_scope": demand.get("denominator_scope", geo["geo_level"]),
+            "raw_population": round(population, 4),
+            "raw_business_count": round(business_count, 4),
+            "raw_parent_population": demand.get("raw_parent_population"),
+            "raw_parent_business_count": demand.get("raw_parent_business_count"),
+            "population_allocation_share": demand.get("population_allocation_share"),
+            "business_allocation_share": demand.get("business_allocation_share"),
+            "population_estimation_method": demand.get("population_estimation_method"),
+            "business_estimation_method": demand.get("business_estimation_method"),
         },
     }
     return {
@@ -554,7 +758,7 @@ def _payload_for_cell(
         "components": components.as_dict(),
         "opportunity_score": components.score(),
         "component_breakdown": component_breakdown,
-        "calculation_method": OPPORTUNITY_METHOD,
+        "calculation_method": calculation_method,
         "source_refs": source_refs,
         "confidence_score": source_confidence,
         "trace_payload": component_breakdown["inputs"],
@@ -564,6 +768,300 @@ def _payload_for_cell(
 def _has_complete_score(payload: dict[str, Any]) -> bool:
     component_values = payload["components"].values()
     return bool(payload["source_refs"]) and all(value is not None for value in component_values)
+
+
+def _neighborhood_rows_for_category(
+    *,
+    repo: OpportunityAnalyticsRepository,
+    category: str,
+    category_operators: list[dict[str, Any]],
+    csd_geographies: list[dict[str, Any]],
+    neighborhood_context: dict[str, Any],
+) -> list[dict[str, Any]]:
+    csd_by_name = {_key(geo["geo_name"]): geo for geo in csd_geographies}
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for operator in category_operators:
+        municipality = _clean_text(operator.get("municipality"))
+        neighborhood = _clean_text(operator.get("neighborhood"))
+        if not municipality or not neighborhood:
+            continue
+        if (
+            _optional_float(operator.get("lat")) is None
+            or _optional_float(operator.get("lng")) is None
+        ):
+            continue
+        grouped[(_key(municipality), _key(neighborhood))].append(operator)
+
+    rows: list[dict[str, Any]] = []
+    for (municipality_key, neighborhood_key), operators in grouped.items():
+        parent_geo = csd_by_name.get(municipality_key)
+        if parent_geo is None:
+            continue
+        denominator = repo.business_denominator(str(parent_geo["geo_code"]), category)
+        if denominator is None:
+            continue
+        municipality = _clean_text(operators[0].get("municipality")) or str(parent_geo["geo_name"])
+        neighborhood = _clean_text(operators[0].get("neighborhood")) or neighborhood_key
+        total_tagged = int(
+            neighborhood_context["counts_by_municipality"].get(municipality_key, len(operators))
+        )
+        neighborhood_tagged = int(
+            neighborhood_context["counts_by_key"].get(
+                (municipality_key, neighborhood_key), len(operators)
+            )
+        )
+        allocation_share = _clamp(neighborhood_tagged / max(total_tagged, 1))
+        if allocation_share <= 0:
+            continue
+        population = float(parent_geo["population"]) * allocation_share
+        business_count = float(denominator["value"]) * allocation_share
+        lat = _average(
+            [_optional_float(operator.get("lat")) for operator in operators],
+            default=float(parent_geo["lat"]),
+        )
+        lng = _average(
+            [_optional_float(operator.get("lng")) for operator in operators],
+            default=float(parent_geo["lng"]),
+        )
+        geo_code = stable_id("nh", parent_geo["geo_code"], neighborhood)
+        operator_refs = _flatten_refs(operator["source_refs"] for operator in operators)
+        source_refs = _unique_refs(
+            [
+                *list(parent_geo["geography_source_refs"]),
+                *list(parent_geo["population_source_refs"]),
+                *list(denominator["source_refs"]),
+                *operator_refs,
+            ]
+        )
+        geography_confidence = _clamp(
+            _average(
+                [
+                    float(parent_geo["geography_confidence"]),
+                    *[float(operator["confidence_score"]) for operator in operators],
+                ],
+                default=0.7,
+            )
+            * 0.88
+        )
+        geography_payload = {
+            "source": DERIVED_NEIGHBORHOOD_SOURCE,
+            "parent_geo_code": parent_geo["geo_code"],
+            "parent_geo_name": parent_geo["geo_name"],
+            "operator_neighborhood_tag_count": neighborhood_tagged,
+            "municipality_neighborhood_tag_count": total_tagged,
+            "population_allocation_share": round(allocation_share, 6),
+            "method": NEIGHBORHOOD_METHOD,
+        }
+        if not repo.upsert_neighborhood_geography(
+            {
+                "geo_code": geo_code,
+                "geo_name": neighborhood,
+                "municipality": municipality,
+                "parent_geo_code": parent_geo["geo_code"],
+                "lat": lat,
+                "lng": lng,
+                "source_refs": source_refs,
+                "confidence_score": geography_confidence,
+                "payload": geography_payload,
+            }
+        ):
+            continue
+        signal_count, signal_refs, signal_conf = repo.signal_count_for_geo_category(
+            neighborhood, category, 180
+        )
+        supply_count = len(operators)
+        density = supply_count / max(population / 10000, 1)
+        new_operators = sum(1 for operator in operators if operator["is_new_180d"])
+        derived_denominator = {
+            "id": stable_id("den_neighborhood", denominator["id"], geo_code),
+            "value": business_count,
+            "source_refs": denominator["source_refs"],
+            "confidence_score": _clamp(float(denominator["confidence_score"]) * 0.88),
+            "payload": {
+                **dict(denominator.get("payload") or {}),
+                "denominator_scope": "neighborhood_estimate_from_parent_csd",
+                "raw_parent_business_count": float(denominator["value"]),
+                "business_allocation_share": round(allocation_share, 6),
+            },
+        }
+        geo = {
+            "geo_code": geo_code,
+            "geo_level": "neighborhood",
+            "geo_name": neighborhood,
+            "lat": lat,
+            "lng": lng,
+            "geography_source_refs": source_refs,
+            "geography_confidence": geography_confidence,
+            "geography_payload": geography_payload,
+            "population_denominator_id": stable_id(
+                "den_neighborhood_population", parent_geo["population_denominator_id"], geo_code
+            ),
+            "population": population,
+            "population_source_refs": parent_geo["population_source_refs"],
+            "population_confidence": _clamp(float(parent_geo["population_confidence"]) * 0.88),
+            "population_payload": {
+                **dict(parent_geo.get("population_payload") or {}),
+                "denominator_scope": "neighborhood_estimate_from_parent_csd",
+                "raw_parent_population": float(parent_geo["population"]),
+                "population_allocation_share": round(allocation_share, 6),
+            },
+            "municipality": municipality,
+            "parent_geo_code": parent_geo["geo_code"],
+        }
+        rows.append(
+            {
+                "geo": geo,
+                "denominator": derived_denominator,
+                "operators": operators,
+                "signal_count": signal_count,
+                "signal_refs": signal_refs,
+                "signal_conf": signal_conf,
+                "density": density,
+                "new_operators": new_operators,
+                "competitor_count_within_radius": _competitor_count_within_radius(
+                    category_operators,
+                    lat,
+                    lng,
+                    COMPETITOR_RADIUS_KM,
+                ),
+                "competitor_radius_km": COMPETITOR_RADIUS_KM,
+                "demand": _demand_metadata(
+                    geography_payload=geo["geography_payload"],
+                    population_payload=geo["population_payload"],
+                    business_payload=derived_denominator["payload"],
+                    denominator_scope="neighborhood_estimate_from_parent_csd",
+                    raw_parent_population=float(parent_geo["population"]),
+                    raw_parent_business_count=float(denominator["value"]),
+                    population_allocation_share=allocation_share,
+                    business_allocation_share=allocation_share,
+                ),
+            }
+        )
+    return rows
+
+
+def _neighborhood_denominator_context(
+    operators: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    counts_by_municipality: dict[str, int] = defaultdict(int)
+    counts_by_key: dict[tuple[str, str], int] = defaultdict(int)
+    for operator in operators:
+        municipality = _clean_text(operator.get("municipality"))
+        neighborhood = _clean_text(operator.get("neighborhood"))
+        if not municipality or not neighborhood:
+            continue
+        municipality_key = _key(municipality)
+        neighborhood_key = _key(neighborhood)
+        counts_by_municipality[municipality_key] += 1
+        counts_by_key[(municipality_key, neighborhood_key)] += 1
+    return {
+        "counts_by_municipality": dict(counts_by_municipality),
+        "counts_by_key": dict(counts_by_key),
+    }
+
+
+def _operators_for_csd(
+    operators: Sequence[dict[str, Any]], geo_name: str
+) -> list[dict[str, Any]]:
+    geo_key = _key(geo_name)
+    return [
+        operator
+        for operator in operators
+        if _key(operator.get("municipality")) == geo_key
+        or _key(operator.get("neighborhood")) == geo_key
+    ]
+
+
+def _competitor_count_within_radius(
+    operators: Sequence[dict[str, Any]],
+    lat: float | None,
+    lng: float | None,
+    radius_km: float,
+) -> int:
+    if lat is None or lng is None:
+        return 0
+    count = 0
+    for operator in operators:
+        operator_lat = _optional_float(operator.get("lat"))
+        operator_lng = _optional_float(operator.get("lng"))
+        if operator_lat is None or operator_lng is None:
+            continue
+        if _haversine_km(lat, lng, operator_lat, operator_lng) <= radius_km:
+            count += 1
+    return count
+
+
+def _demand_metadata(
+    *,
+    geography_payload: Any,
+    population_payload: Any,
+    business_payload: Any,
+    denominator_scope: str,
+    raw_parent_population: float | None = None,
+    raw_parent_business_count: float | None = None,
+    population_allocation_share: float | None = None,
+    business_allocation_share: float | None = None,
+) -> dict[str, Any]:
+    payloads = [
+        payload
+        for payload in (geography_payload, population_payload, business_payload)
+        if isinstance(payload, dict)
+    ]
+    demand_source = next(
+        (
+            str(payload.get("demand_source"))
+            for payload in payloads
+            if payload.get("demand_source")
+        ),
+        "statcan_wds_live",
+    )
+    demand_source_status = next(
+        (
+            str(payload.get("demand_source_status"))
+            for payload in payloads
+            if payload.get("demand_source_status")
+        ),
+        "live",
+    )
+    multiplier = 1.0
+    if "fixture" in demand_source or "fixture" in demand_source_status:
+        multiplier *= 0.92
+    if denominator_scope != "CSD":
+        multiplier *= 0.88
+    return {
+        "demand_source": demand_source,
+        "demand_source_status": demand_source_status,
+        "denominator_scope": denominator_scope,
+        "quality_multiplier": multiplier,
+        "live_attempted": any(bool(payload.get("live_attempted")) for payload in payloads),
+        "live_error": next(
+            (payload.get("live_error") for payload in payloads if payload.get("live_error")),
+            None,
+        ),
+        "raw_parent_population": raw_parent_population,
+        "raw_parent_business_count": raw_parent_business_count,
+        "population_allocation_share": (
+            round(population_allocation_share, 6)
+            if population_allocation_share is not None
+            else None
+        ),
+        "business_allocation_share": (
+            round(business_allocation_share, 6)
+            if business_allocation_share is not None
+            else None
+        ),
+        "population_estimation_method": (
+            "parent CSD population allocated by observed neighborhood-tagged operator share"
+            if denominator_scope != "CSD"
+            else "official CSD denominator"
+        ),
+        "business_estimation_method": (
+            "parent CSD category business count allocated by observed "
+            "neighborhood-tagged operator share"
+            if denominator_scope != "CSD"
+            else "official CSD denominator"
+        ),
+    }
 
 
 def _core_access_proxy(lat: float | None, lng: float | None) -> float:
@@ -588,11 +1086,28 @@ def _clamp(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
-def _average(values: Iterable[float], *, default: float) -> float:
+def _average(values: Iterable[float | None], *, default: float) -> float:
     cleaned = [value for value in values if value is not None]
     if not cleaned:
         return default
     return sum(cleaned) / len(cleaned)
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str | int | float):
+        return float(value)
+    return None
+
+
+def _clean_text(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _key(value: object) -> str:
+    return str(value or "").strip().lower()
 
 
 def _flatten_refs(ref_groups: Iterable[Any]) -> list[dict[str, Any]]:

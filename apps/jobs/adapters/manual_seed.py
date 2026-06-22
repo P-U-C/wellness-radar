@@ -77,7 +77,7 @@ class ManualRecoverySeedAdapter:
                 municipality=raw.get("municipality"),
                 province=raw.get("province"),
                 country=raw.get("country"),
-                neighborhood=None,
+                neighborhood=raw.get("neighborhood"),
                 lat=_float_or_none(raw.get("lat")),
                 lng=_float_or_none(raw.get("lng")),
                 licence_ref=None,

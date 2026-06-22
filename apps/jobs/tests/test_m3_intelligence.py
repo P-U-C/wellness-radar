@@ -15,6 +15,7 @@ from apps.jobs.analytics.graph import (
 )
 from apps.jobs.analytics.influence import components_for_person, why_person_appears
 from apps.jobs.analytics.opportunity import ScoreComponents
+from apps.jobs.analytics.propositions import proposition_from_heatmap_cell
 from apps.jobs.analytics.trends import (
     FixturePeerCityTrendProvider,
     InMemoryTrendRepository,
@@ -24,7 +25,7 @@ from apps.jobs.analytics.trends import (
 
 def test_statcan_denominator_adapter_uses_fixture_and_bc_gate() -> None:
     repository = InMemoryDenominatorRepository()
-    metrics = run_statcan_denominators(StatCanWdsAdapter(), repository)
+    metrics = run_statcan_denominators(StatCanWdsAdapter(mode="fixture"), repository)
 
     assert metrics.records_fetched >= 6
     assert metrics.records_persisted > metrics.records_fetched
@@ -36,6 +37,59 @@ def test_statcan_denominator_adapter_uses_fixture_and_bc_gate() -> None:
         and denominator.category == "recovery_contrast_therapy"
         for denominator in repository.denominators.values()
     )
+    assert all(
+        denominator.payload["demand_source"] == "statcan_wds_fixture"
+        for denominator in repository.denominators.values()
+    )
+    assert all(
+        denominator.payload["demand_source_status"] == "fixture"
+        for denominator in repository.denominators.values()
+    )
+
+
+def test_proposition_template_exposes_raw_demand_and_sources() -> None:
+    source_refs = [
+        {
+            "source_name": "statcan_wds",
+            "url": "https://www.statcan.gc.ca/en/developers/wds",
+            "trust_tier": "official",
+            "seen_at": "2026-06-18T00:00:00Z",
+            "source_record_id": "wds",
+            "licence": "Statistics Canada terms",
+        }
+    ]
+    proposition = proposition_from_heatmap_cell(
+        {
+            "heatmap_cell_id": "heat_recovery_mount_pleasant",
+            "category": "recovery_contrast_therapy",
+            "geo_code": "nh_5915022_mount_pleasant",
+            "geo_name": "Mount Pleasant",
+            "geo_level": "neighborhood",
+            "supply_count": 2,
+            "population": 44149.8667,
+            "business_count": 17.3333,
+            "opportunity_score": 0.78,
+            "confidence_score": 0.63,
+            "component_breakdown": {},
+            "source_refs": source_refs,
+            "parent_geo_name": "Vancouver",
+            "trace_payload": {
+                "competitor_count_within_radius": 3,
+                "competitor_radius_km": 4.0,
+                "demand_source": "statcan_wds_fixture",
+                "demand_source_status": "fixture_fallback",
+                "raw_parent_population": 662248,
+                "raw_parent_business_count": 260,
+                "population_allocation_share": 0.066667,
+            },
+        }
+    )
+
+    assert proposition["headline"] == "Open recovery and contrast therapy in Mount Pleasant"
+    assert proposition["competitor_count_within_radius"] == 3
+    assert proposition["population"] == 44149.8667
+    assert proposition["source_refs"] == source_refs
+    assert "fixture_fallback" in proposition["summary"]
 
 
 def test_peer_city_trends_fixture_is_stub_backed_and_deterministic() -> None:

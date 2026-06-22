@@ -637,6 +637,139 @@ Results:
 - Clean migration applied through `008`.
 - Ops alert tests still pass, including existing source-stale/adapter-failure dispatch behavior.
 
+## CM3 Neighborhood Gaps + Propositions
+
+### What Changed
+
+- Added migration `009_cm3_neighborhood_propositions.sql`.
+- Opportunity analytics now writes both `geo_level='CSD'` and `geo_level='neighborhood'` cells.
+- Neighborhood cells are derived from source-backed operator `neighborhood` tags and BC-gated centroids.
+- Each cell carries raw demand fields in `trace_payload`: `raw_population`, `raw_business_count`, demand source/status, radius competitor count, and parent-CSD allocation metadata when used.
+- Added deterministic proposition synthesis in `apps/jobs/analytics/propositions.py`.
+- Added `GET /api/propositions` and `geo_level` filtering for `/analytics/whitespace` and scorecards.
+- Daily brief top actions now prefer neighborhood propositions when available.
+- Frontend Opportunity screen now switches `Neighborhood` / `CSD` and lists written propositions with evidence and source links.
+
+### Real CM3 Run Evidence
+
+Commands run against local Postgres:
+
+```bash
+python3 -m db.migrate
+python3 -m apps.jobs.runner manual_seed --limit 100
+python3 -m apps.jobs.runner statcan_denominators
+python3 -m apps.jobs.runner opportunity_analytics
+python3 -m apps.jobs.runner proposition_synthesis
+python3 -m apps.jobs.runner daily_brief
+```
+
+Persisted heatmap counts:
+
+```text
+CSD allied_health: 5
+CSD fitness_movement: 5
+CSD recovery_contrast_therapy: 5
+CSD spa_thermal: 5
+neighborhood allied_health: 17
+neighborhood fitness_movement: 4
+neighborhood recovery_contrast_therapy: 10
+neighborhood spa_thermal: 8
+```
+
+Sample neighborhood cell:
+
+```json
+{
+  "category": "recovery_contrast_therapy",
+  "geo_name": "Downtown",
+  "geo_level": "neighborhood",
+  "supply_count": 3,
+  "population": 180613.090909091,
+  "business_count": 70.9090909090909,
+  "opportunity_score": 0.5133,
+  "confidence_score": 0.5621143,
+  "competitor_count_within_radius": 11,
+  "competitor_radius_km": 4,
+  "demand_source": "statcan_wds_fixture",
+  "demand_source_status": "fixture_fallback",
+  "raw_parent_population": 662248
+}
+```
+
+Sample proposition from `/api/propositions?category=recovery_contrast_therapy&geo_level=neighborhood&limit=2`:
+
+```json
+{
+  "headline": "Open recovery and contrast therapy in Edmonds",
+  "geo_level": "neighborhood",
+  "geo_name": "Edmonds",
+  "category": "recovery_contrast_therapy",
+  "competitor_count_within_radius": 1,
+  "competitor_radius_km": 4,
+  "population": 249125,
+  "business_count": 74,
+  "opportunity_score": 0.5133,
+  "confidence": 0.6784,
+  "demand_source": "statcan_wds_fixture",
+  "summary": "Open recovery and contrast therapy in Edmonds: 1 competitor(s) within 4 km; 249,125 people estimated neighborhood population from 100.0% share of Burnaby (249,125 people); 74 business locations estimated category business count from parent CSD raw count 74 business locations. Opportunity score is 0.51 with 0.68 confidence; demand source is fixture_fallback."
+}
+```
+
+Daily brief proof:
+
+- `top_propositions`: 8.
+- Top action after CM3 ordering: `Evaluate proposition: Open recovery and contrast therapy in Downtown`.
+- Summary includes 11 competitors within 4 km, estimated neighborhood population, parent-CSD raw population/business counts, and `fixture_fallback` demand provenance.
+
+### Demand Source Status
+
+- Live StatCan WDS was attempted in `auto` mode.
+- The local run could not complete the live WDS handshake: `_ssl.c:990: The handshake operation timed out`.
+- The recorded StatCan denominator fixture was used with explicit provenance:
+  - `demand_source='statcan_wds_fixture'`
+  - `demand_source_status='fixture_fallback'`
+  - `live_attempted=true`
+  - `live_error` persisted in denominator payloads.
+- Neighborhood denominator values are transparent parent-CSD allocations where no official neighborhood denominator exists. Confidence is reduced for fixture-backed and allocated demand.
+- Peer-city trends remain `is_stub=true` and are not presented as live demand.
+
+### CM3 Commands Run
+
+```bash
+python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm3_clean python3 -m db.migrate
+python3 -m apps.jobs.runner manual_seed --limit 100
+python3 -m apps.jobs.runner statcan_denominators
+python3 -m apps.jobs.runner opportunity_analytics
+python3 -m apps.jobs.runner proposition_synthesis
+python3 -m apps.jobs.runner daily_brief
+python3 - <<'PY'
+from fastapi.testclient import TestClient
+from apps.api.app.main import app
+client = TestClient(app)
+print(client.get('/api/propositions?category=recovery_contrast_therapy&geo_level=neighborhood&limit=2').status_code)
+print(client.get('/analytics/whitespace?category=recovery_contrast_therapy&geo_level=neighborhood&limit=2').status_code)
+PY
+pytest
+ruff check .
+mypy .
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Results:
+
+- Python tests: 59 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web lint/typecheck: passed.
+- Web unit tests: 9 passed.
+- Web build: passed; Vite still reports the existing large chunk warning.
+- Clean migration applied through `009`.
+- Docker-based compose verification was not possible in this session because access to `/var/run/docker.sock` was denied; local Postgres migration/job/API verification was completed instead.
+
 ## Final Status
 
 ### Production Gate
@@ -657,6 +790,7 @@ Results:
 - M4 Production hardening: done for build scope, with honest production/human-review gaps listed above.
 - CM1 Contacts/deal-flow layer: done.
 - CM2 Daily market-intelligence brief: done.
+- CM3 Neighborhood gaps/propositions: done, with fixture-backed demand clearly labelled.
 
 ### Run The Whole System
 
@@ -680,9 +814,9 @@ curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/adm
 
 ### Final Test Count
 
-- Python: 57 passing.
+- Python: 59 passing.
 - Web: 9 passing.
-- Total: 66 passing.
+- Total: 68 passing.
 
 ### Remaining Gaps Before Public Production
 

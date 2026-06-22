@@ -20,6 +20,7 @@ import {
   fetchOpportunityScorecards,
   fetchPeople,
   fetchPeopleGraph,
+  fetchPropositions,
   fetchSignals,
   fetchSourceFreshness,
   fetchSourceRuns,
@@ -32,6 +33,7 @@ import {
   type ObservabilitySummary,
   type Operator,
   type OpportunityHeatmapCell,
+  type OpportunityProposition,
   type OpportunityScorecard,
   type Person,
   type Signal,
@@ -79,6 +81,7 @@ export function App() {
   const [people, setPeople] = useState<Person[]>([]);
   const [heatmapCells, setHeatmapCells] = useState<OpportunityHeatmapCell[]>([]);
   const [scorecards, setScorecards] = useState<OpportunityScorecard[]>([]);
+  const [propositions, setPropositions] = useState<OpportunityProposition[]>([]);
   const [velocity, setVelocity] = useState<CategoryVelocity[]>([]);
   const [brief, setBrief] = useState<DailyBrief | null>(null);
   const [trends, setTrends] = useState<TrendTile[]>([]);
@@ -89,6 +92,7 @@ export function App() {
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
+  const [opportunityGeoLevel, setOpportunityGeoLevel] = useState<"CSD" | "neighborhood">("neighborhood");
   const [peopleSort] = useState("influence");
   const [minConfidence, setMinConfidence] = useState(0.6);
   const [minOpportunity, setMinOpportunity] = useState(0.55);
@@ -120,6 +124,7 @@ export function App() {
         peopleData,
         heatmapData,
         scorecardData,
+        propositionData,
         velocityData,
         briefData,
         trendData,
@@ -131,8 +136,9 @@ export function App() {
         fetchSourceRuns(),
         fetchSourceFreshness(),
         fetchPeople(peopleSort),
-        fetchWhitespace(analyticsCategory),
-        fetchOpportunityScorecards(analyticsCategory),
+        fetchWhitespace(analyticsCategory, opportunityGeoLevel),
+        fetchOpportunityScorecards(analyticsCategory, opportunityGeoLevel),
+        fetchPropositions(analyticsCategory, opportunityGeoLevel),
         fetchCategoryVelocity(analyticsCategory),
         fetchDailyBrief(),
         fetchTrends(),
@@ -146,6 +152,7 @@ export function App() {
       setPeople(peopleData);
       setHeatmapCells(heatmapData);
       setScorecards(scorecardData);
+      setPropositions(propositionData);
       setVelocity(velocityData);
       setBrief(briefData);
       setTrends(trendData);
@@ -157,7 +164,7 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }, [category, peopleSort]);
+  }, [category, opportunityGeoLevel, peopleSort]);
 
   useEffect(() => {
     void loadData();
@@ -240,6 +247,14 @@ export function App() {
         .filter((scorecard) => scorecard.confidence_score >= minConfidence)
         .sort((a, b) => b.opportunity_score - a.opportunity_score),
     [minConfidence, minOpportunity, scorecards]
+  );
+  const visiblePropositions = useMemo(
+    () =>
+      propositions
+        .filter((proposition) => proposition.opportunity_score >= minOpportunity)
+        .filter((proposition) => proposition.confidence_score >= minConfidence)
+        .sort((a, b) => b.opportunity_score - a.opportunity_score),
+    [minConfidence, minOpportunity, propositions]
   );
 
   const visibleSignals = useMemo(() => {
@@ -573,7 +588,9 @@ export function App() {
               />
               <div className="wr-opportunity-title">
                 <h1>Opportunity Surface</h1>
-                <span>{sentenceCase(activeAnalyticsCategory(category))} / supply-demand whitespace</span>
+                <span>
+                  {sentenceCase(activeAnalyticsCategory(category))} / {opportunityGeoLevel} whitespace
+                </span>
               </div>
               <div className="wr-opportunity-categories" aria-label="Opportunity category">
                 {CATEGORIES.filter((item) => item.value !== "all").slice(0, 5).map((item) => {
@@ -590,6 +607,18 @@ export function App() {
                   );
                 })}
               </div>
+              <div className="wr-opportunity-geo-level" aria-label="Opportunity geography level">
+                {(["neighborhood", "CSD"] as const).map((level) => (
+                  <button
+                    key={level}
+                    className={opportunityGeoLevel === level ? "is-active" : ""}
+                    type="button"
+                    onClick={() => setOpportunityGeoLevel(level)}
+                  >
+                    {level === "CSD" ? "CSD" : "Neighborhood"}
+                  </button>
+                ))}
+              </div>
               {visibleHeatmapCells[0] ? <OpportunityCallout cell={visibleHeatmapCells[0]} /> : null}
               <div className="wr-opportunity-legend">
                 <span>OPPORTUNITY SCORE / H3 HEXBIN</span>
@@ -603,6 +632,7 @@ export function App() {
             <OpportunityPanel
               scorecards={visibleScorecards}
               heatmapCells={visibleHeatmapCells}
+              propositions={visiblePropositions}
               velocity={velocity}
               operators={visibleOperators}
               trends={trends}

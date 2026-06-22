@@ -197,13 +197,15 @@ def generate_daily_brief(
             "new_reachable_leads": _new_reachable_leads(conn, window_start, max_section_items),
         }
         _assert_source_backed_sections(sections)
-        top_actions = _top_actions(sections)
+        top_propositions = _top_propositions(conn, max_section_items)
+        top_actions = _top_actions(sections, top_propositions=top_propositions)
         _assert_source_backed_actions(top_actions)
         counts = {
             "changed_operators": len(sections["changed_operators"]),
             "new_signals": len(sections["new_signals"]),
             "opportunity_movement": len(sections["opportunity_movement"]),
             "new_reachable_leads": len(sections["new_reachable_leads"]),
+            "top_propositions": len(top_propositions),
             "top_actions": len(top_actions),
             "window_hours": round((window_end - window_start).total_seconds() / 3600, 3),
             "had_prior_brief": previous_brief is not None,
@@ -644,12 +646,87 @@ def _new_reachable_leads(conn: Any, window_start: datetime, limit: int) -> list[
     return items
 
 
-def _top_actions(sections: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def _top_propositions(conn: Any, limit: int) -> list[dict[str, Any]]:
+    table_row = conn.execute(
+        "SELECT to_regclass('opportunity_proposition') AS relation_name"
+    ).fetchone()
+    if not table_row or not table_row["relation_name"]:
+        return []
+    rows = conn.execute(
+        """
+        SELECT
+          id,
+          headline,
+          summary,
+          category,
+          geo_name,
+          geo_level,
+          municipality,
+          competitor_count_within_radius,
+          competitor_radius_km,
+          population,
+          business_count,
+          demand_source,
+          opportunity_score,
+          confidence_score,
+          source_refs,
+          generated_at
+        FROM opportunity_proposition
+        WHERE jsonb_array_length(source_refs) > 0
+        ORDER BY
+          CASE WHEN geo_level = 'neighborhood' THEN 0 ELSE 1 END,
+          opportunity_score DESC,
+          confidence_score DESC,
+          geo_name ASC
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "id": stable_id("brief_proposition", row["id"]),
+            "item_type": "opportunity_proposition",
+            "proposition_id": row["id"],
+            "title": row["headline"],
+            "summary": row["summary"],
+            "category": row["category"],
+            "geo_name": row["geo_name"],
+            "geo_level": row["geo_level"],
+            "municipality": row["municipality"],
+            "competitor_count_within_radius": int(row["competitor_count_within_radius"]),
+            "competitor_radius_km": float(row["competitor_radius_km"]),
+            "population": float(row["population"]) if row["population"] is not None else None,
+            "business_count": (
+                float(row["business_count"]) if row["business_count"] is not None else None
+            ),
+            "demand_source": row["demand_source"],
+            "opportunity_score": float(row["opportunity_score"]),
+            "generated_at": _iso(row["generated_at"]),
+            "source_refs": _as_refs(row["source_refs"]),
+            "confidence_score": float(row["confidence_score"]),
+        }
+        for row in rows
+    ]
+
+
+def _top_actions(
+    sections: dict[str, list[dict[str, Any]]],
+    *,
+    top_propositions: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     candidates: list[tuple[float, dict[str, Any]]] = []
     leads = sections["new_reachable_leads"]
     operators = sections["changed_operators"]
     signals = sections["new_signals"]
     movements = sections["opportunity_movement"]
+    propositions = top_propositions or []
+
+    for proposition in propositions:
+        evidence = [_evidence("top_propositions", proposition)]
+        title = f"Evaluate proposition: {proposition['title']}"
+        summary = proposition["summary"]
+        score = 125 + float(proposition.get("opportunity_score") or 0)
+        candidates.append((score, _action("proposition", title, summary, evidence)))
 
     for movement in movements:
         matching_leads = [
@@ -803,6 +880,7 @@ def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
           category,
           geo_code,
           geo_name,
+          geo_level,
           opportunity_score,
           source_refs,
           confidence_score,
@@ -821,17 +899,19 @@ def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
               category,
               geo_code,
               geo_name,
+              geo_level,
               opportunity_score,
               source_refs,
               confidence_score,
               calculation_method,
               captured_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (brief_date, scorecard_id) DO UPDATE SET
               category = EXCLUDED.category,
               geo_code = EXCLUDED.geo_code,
               geo_name = EXCLUDED.geo_name,
+              geo_level = EXCLUDED.geo_level,
               opportunity_score = EXCLUDED.opportunity_score,
               source_refs = EXCLUDED.source_refs,
               confidence_score = EXCLUDED.confidence_score,
@@ -845,6 +925,7 @@ def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
                 row["category"],
                 row["geo_code"],
                 row["geo_name"],
+                row["geo_level"],
                 row["opportunity_score"],
                 Jsonb(_as_refs(row["source_refs"])),
                 row["confidence_score"],

@@ -1518,6 +1518,7 @@ def main() -> None:
             "entity_resolution",
             "statcan_denominators",
             "opportunity_analytics",
+            "proposition_synthesis",
             "peer_city_trends",
             "influence_scoring",
             "people_graph",
@@ -1525,6 +1526,7 @@ def main() -> None:
             "m2",
             "m3",
             "cm2",
+            "cm3",
         ],
     )
     parser.add_argument("--limit", type=int, default=100)
@@ -1560,6 +1562,11 @@ def main() -> None:
         from apps.jobs.analytics.opportunity import run_opportunity_analytics
 
         print(_metrics_dict(run_opportunity_analytics()))
+        return
+    if args.adapter == "proposition_synthesis":
+        from apps.jobs.analytics.propositions import run_proposition_synthesis
+
+        print(_metrics_dict(run_proposition_synthesis()))
         return
     if args.adapter == "peer_city_trends":
         from apps.jobs.analytics.trends import run_peer_city_trends
@@ -1597,6 +1604,9 @@ def main() -> None:
         return
     if args.adapter == "cm2":
         print(run_cm2_sequence(limit=args.limit, people_csv=args.people_csv))
+        return
+    if args.adapter == "cm3":
+        print(run_cm3_sequence(limit=args.limit, people_csv=args.people_csv))
         return
 
     metrics = run_adapter(adapter_for_name(args.adapter, args.limit))
@@ -1642,15 +1652,34 @@ def run_m3_sequence() -> dict[str, Any]:
     from apps.jobs.analytics.graph import run_graph_build
     from apps.jobs.analytics.influence import run_influence_scoring
     from apps.jobs.analytics.opportunity import run_opportunity_analytics
+    from apps.jobs.analytics.propositions import run_proposition_synthesis
     from apps.jobs.analytics.trends import run_peer_city_trends
 
     results: dict[str, Any] = {}
     results["entity_resolution"] = _run_safely(run_entity_resolution)
     results["statcan_denominators"] = _run_safely(run_statcan_denominators)
     results["opportunity_analytics"] = _run_safely(run_opportunity_analytics)
+    results["proposition_synthesis"] = _run_safely(run_proposition_synthesis)
     results["peer_city_trends"] = _run_safely(run_peer_city_trends)
     results["people_graph"] = _run_safely(run_graph_build)
     results["influence_scoring"] = _run_safely(run_influence_scoring)
+    return results
+
+
+def run_cm3_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[str, Any]:
+    from apps.jobs.analytics.daily_brief import generate_daily_brief
+    from apps.jobs.analytics.propositions import run_proposition_synthesis
+
+    results: dict[str, Any] = {}
+    results["cm2"] = run_cm2_sequence(limit=limit, people_csv=people_csv)
+    results["proposition_synthesis"] = _run_safely(run_proposition_synthesis)
+    brief = generate_daily_brief(window_hours=72)
+    results["daily_brief"] = {
+        "brief_id": brief.brief_id,
+        "brief_date": brief.brief_date.isoformat(),
+        "status": brief.status,
+        "counts": brief.counts,
+    }
     return results
 
 

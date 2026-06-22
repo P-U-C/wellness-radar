@@ -147,12 +147,46 @@ export type OpportunityScorecard = {
   category: string;
   geo_code: string;
   geo_name: string;
+  geo_level: string;
   opportunity_score: number;
   component_breakdown: Record<string, unknown>;
   source_refs: SourceRef[];
   confidence_score: number;
   calculation_method: string;
   caveat: string;
+  generated_at: string;
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
+};
+
+export type OpportunityProposition = {
+  id: string;
+  heatmap_cell_id: string;
+  headline: string;
+  summary: string;
+  category: string;
+  geo_code: string;
+  geo_name: string;
+  geo_level: string;
+  area: string;
+  municipality: string | null;
+  competitor_count_within_radius: number;
+  competitor_radius_km: number;
+  population: number | null;
+  business_count: number | null;
+  demand_source: string;
+  supporting_signals: Array<{
+    kind: string;
+    label: string;
+    raw_value: number | string | null;
+    radius_km?: number;
+    source_refs: SourceRef[];
+  }>;
+  component_breakdown: Record<string, unknown>;
+  opportunity_score: number;
+  confidence: number;
+  confidence_score: number;
+  source_refs: SourceRef[];
   generated_at: string;
   freshness_at?: string | null;
   freshness_age_hours?: number | null;
@@ -382,8 +416,11 @@ export async function fetchPeople(sort = "confidence"): Promise<Person[]> {
   return data.items;
 }
 
-export async function fetchWhitespace(category: string): Promise<OpportunityHeatmapCell[]> {
-  const params = new URLSearchParams({ category });
+export async function fetchWhitespace(
+  category: string,
+  geoLevel = "CSD"
+): Promise<OpportunityHeatmapCell[]> {
+  const params = new URLSearchParams({ category, geo_level: geoLevel });
   const data = await getJson<{ items: OpportunityHeatmapCell[] }>(
     `/analytics/whitespace?${params.toString()}`
   );
@@ -393,8 +430,11 @@ export async function fetchWhitespace(category: string): Promise<OpportunityHeat
   return data.items;
 }
 
-export async function fetchOpportunityScorecards(category: string): Promise<OpportunityScorecard[]> {
-  const params = new URLSearchParams({ category });
+export async function fetchOpportunityScorecards(
+  category: string,
+  geoLevel = "CSD"
+): Promise<OpportunityScorecard[]> {
+  const params = new URLSearchParams({ category, geo_level: geoLevel });
   const data = await getJson<{ items: OpportunityScorecard[] }>(
     `/analytics/opportunity-scorecards?${params.toString()}`
   );
@@ -402,6 +442,17 @@ export async function fetchOpportunityScorecards(category: string): Promise<Oppo
     return [];
   }
   return data.items;
+}
+
+export async function fetchPropositions(
+  category: string,
+  geoLevel = "neighborhood"
+): Promise<OpportunityProposition[]> {
+  const params = new URLSearchParams({ category, geo_level: geoLevel });
+  const data = await getJson<{ items: OpportunityProposition[] }>(
+    `/propositions?${params.toString()}`
+  );
+  return data?.items ?? [];
 }
 
 export async function fetchCategoryVelocity(category: string): Promise<CategoryVelocity[]> {
