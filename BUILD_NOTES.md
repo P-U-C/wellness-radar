@@ -634,6 +634,399 @@ Results:
 - Web lint/typecheck: passed.
 - Web unit tests: 9 passed.
 - Web build: passed; Vite still reports the existing large chunk warning.
+
+## R1 — Bundles
+
+Scope: backend/API only. Added deterministic bundle synthesis from canonical operator
+data, raw OSM/source subtype tags, and source-backed name/category text. The taxonomy
+lives in `apps/jobs/analytics/bundles.py` and is extensible by adding bundle definitions;
+membership is still data-driven because operators join only when their stored categories,
+raw subtype tags, or name text match.
+
+Migration: `012_bundles.sql`
+
+Real run:
+
+```bash
+python3 -m db.migrate
+python3 -m apps.jobs.runner bundle_synthesis
+```
+
+Result:
+
+```text
+applied migration 012_bundles.sql
+{'fetched': 357, 'persisted': 224, 'rejected': 0, 'errors': 0}
+```
+
+Clean DB migration check:
+
+```text
+applied migration 001_canonical_schema.sql
+applied migration 002_source_registry_seed.sql
+applied migration 003_m2_private_alpha.sql
+applied migration 004_m3_intelligence_beta.sql
+applied migration 005_m4_production_hardening.sql
+applied migration 006_scheduler_alert_delivery.sql
+applied migration 007_contacts_deal_flow.sql
+applied migration 008_daily_brief.sql
+applied migration 009_cm3_neighborhood_propositions.sql
+applied migration 010_cm4_brief_proposition_exports.sql
+applied migration 011_cm5_live_demand_neighborhood_assignment.sql
+applied migration 012_bundles.sql
+```
+
+Endpoint: `GET /bundles?limit=20`
+
+```json
+[
+  {
+    "id": "bundle_allied_health_bodywork",
+    "label": "Allied health & bodywork",
+    "score": 0.7828,
+    "member_count": 89,
+    "confidence": 0.843,
+    "top_geo": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 68, "population": 662248.0, "density": 1.0268},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 30, "population": null, "density": null},
+      {"geo_level": "neighborhood", "geo_name": "Fairview", "member_count": 11, "population": null, "density": null}
+    ]
+  },
+  {
+    "id": "bundle_boutique_strength",
+    "label": "Boutique strength",
+    "score": 0.731,
+    "member_count": 31,
+    "confidence": 0.787,
+    "top_geo": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 12, "population": 662248.0, "density": 0.1812},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 5, "population": null, "density": null},
+      {"geo_level": "neighborhood", "geo_name": "Kitsilano", "member_count": 2, "population": null, "density": null}
+    ]
+  },
+  {
+    "id": "bundle_longevity_iv",
+    "label": "Longevity / IV",
+    "score": 0.7086,
+    "member_count": 20,
+    "confidence": 0.7849,
+    "top_geo": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 10, "population": 662248.0, "density": 0.151},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 9, "population": null, "density": null},
+      {"geo_level": "CSD", "geo_name": "Richmond", "member_count": 2, "population": 209937.0, "density": 0.0953}
+    ]
+  },
+  {
+    "id": "bundle_spa_thermal",
+    "label": "Spa & thermal",
+    "score": 0.6959,
+    "member_count": 27,
+    "confidence": 0.8107,
+    "top_geo": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 16, "population": 662248.0, "density": 0.2416},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 8, "population": null, "density": null},
+      {"geo_level": "CSD", "geo_name": "Burnaby", "member_count": 3, "population": 249125.0, "density": 0.1204}
+    ]
+  },
+  {
+    "id": "bundle_social_wellness_clubs",
+    "label": "Social wellness clubs",
+    "score": 0.6826,
+    "member_count": 15,
+    "confidence": 0.8113,
+    "top_geo": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 9, "population": 662248.0, "density": 0.1359},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 3, "population": null, "density": null},
+      {"geo_level": "CSD", "geo_name": "Burnaby", "member_count": 2, "population": 249125.0, "density": 0.0803}
+    ]
+  },
+  {
+    "id": "bundle_cold_plunge_contrast_therapy",
+    "label": "Cold plunge & contrast therapy",
+    "score": 0.6729,
+    "member_count": 14,
+    "confidence": 0.8066,
+    "top_geo": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 11, "population": 662248.0, "density": 0.1661},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 4, "population": null, "density": null},
+      {"geo_level": "neighborhood", "geo_name": "West End", "member_count": 2, "population": null, "density": null}
+    ]
+  },
+  {
+    "id": "bundle_yoga_pilates",
+    "label": "Yoga & pilates",
+    "score": 0.6463,
+    "member_count": 9,
+    "confidence": 0.756,
+    "top_geo": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 3, "population": 662248.0, "density": 0.0453},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 3, "population": null, "density": null},
+      {"geo_level": "neighborhood", "geo_name": "West End", "member_count": 1, "population": null, "density": null}
+    ]
+  }
+]
+```
+
+Endpoint: `GET /bundles/bundle_cold_plunge_contrast_therapy`
+
+Source refs below are abbreviated to `source_name`, `source_record_id`, and
+`trust_tier`; the API returns full source ref objects.
+
+```json
+{
+  "id": "bundle_cold_plunge_contrast_therapy",
+  "label": "Cold plunge & contrast therapy",
+  "bundle_score": 0.6729,
+  "confidence_score": 0.8066,
+  "member_count": 14,
+  "components": {
+    "demand_proxy": 0.9906,
+    "member_scale": 0.6018,
+    "low_supply_density": 0.7164,
+    "momentum": 0.1573,
+    "source_confidence": 0.8066,
+    "formula": "0.30 demand_proxy + 0.20 member_scale + 0.20 low_supply_density + 0.20 momentum + 0.10 source_confidence",
+    "methodology_version": "r1_bundle_synthesis_v1",
+    "inputs": {
+      "member_count": 14,
+      "bundle_density_per_10000_population": 0.1444,
+      "new_members_90d": 14,
+      "new_members_180d": 14,
+      "signal_velocity_90d": 14,
+      "signal_velocity_180d": 14,
+      "momentum_index": 31.5
+    }
+  },
+  "geography": {
+    "bundle_density_per_10000_population": 0.1444,
+    "demand_proxy": 0.9906,
+    "concentrations": [
+      {"geo_level": "CSD", "geo_name": "Vancouver", "member_count": 11, "population": 662248.0, "density": 0.1661},
+      {"geo_level": "neighborhood", "geo_name": "Downtown", "member_count": 4, "population": null, "density": null},
+      {"geo_level": "neighborhood", "geo_name": "West End", "member_count": 2, "population": null, "density": null},
+      {"geo_level": "CSD", "geo_name": "North Vancouver", "member_count": 1, "population": 58120.0, "density": 0.1721},
+      {"geo_level": "CSD", "geo_name": "Burnaby", "member_count": 1, "population": 249125.0, "density": 0.0401}
+    ]
+  },
+  "members": [
+    {
+      "id": "op_manual_seed_art_of_sauna",
+      "name": "Art of Sauna",
+      "municipality": "Burnaby",
+      "neighborhood": "Edmonds",
+      "lat": 49.2202925,
+      "lng": -122.9289587,
+      "website": "https://artofsauna.ca/",
+      "contacts": [{"contact_type": "website", "value": "https://artofsauna.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery", "sauna"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "art_of_sauna", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_aetherhaus",
+      "name": "AetherHaus",
+      "municipality": "Vancouver",
+      "neighborhood": "West End",
+      "lat": 49.2869063,
+      "lng": -123.1415786,
+      "website": "https://www.aetherhaus.ca/",
+      "contacts": [{"contact_type": "website", "value": "https://www.aetherhaus.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "aetherhaus", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_kolm_kontrast",
+      "name": "Kolm Kontrast",
+      "municipality": "Vancouver",
+      "neighborhood": "Fairview",
+      "lat": 49.2642,
+      "lng": -123.116,
+      "website": "https://www.kolmkontrast.com/",
+      "contacts": [{"contact_type": "website", "value": "https://www.kolmkontrast.com/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "kontrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "kolm_kontrast", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_tality_mount_pleasant",
+      "name": "Tality Wellness Mount Pleasant",
+      "municipality": "Vancouver",
+      "neighborhood": "Mount Pleasant",
+      "lat": 49.2676,
+      "lng": -123.1018,
+      "website": "https://www.talitywellness.ca/",
+      "contacts": [{"contact_type": "website", "value": "https://www.talitywellness.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "tality_mount_pleasant", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_tality_kitsilano",
+      "name": "Tality Wellness Kitsilano",
+      "municipality": "Vancouver",
+      "neighborhood": "Kitsilano",
+      "lat": 49.2641,
+      "lng": -123.1858,
+      "website": "https://www.talitywellness.ca/",
+      "contacts": [{"contact_type": "website", "value": "https://www.talitywellness.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "tality_kitsilano", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_tality_shipyards",
+      "name": "Tality Wellness Shipyards",
+      "municipality": "North Vancouver",
+      "neighborhood": "Lower Lonsdale",
+      "lat": 49.3097,
+      "lng": -123.0803,
+      "website": "https://www.talitywellness.ca/",
+      "contacts": [{"contact_type": "website", "value": "https://www.talitywellness.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "tality_shipyards", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_osm_overpass_node_3746143481",
+      "name": "F212",
+      "municipality": "Vancouver",
+      "neighborhood": "West End",
+      "lat": 49.2797986,
+      "lng": -123.130533,
+      "website": "https://f212.com/",
+      "contacts": [{"contact_type": "email", "value": "info@f212.com"}, {"contact_type": "phone", "value": "+1-604-689-9719"}, {"contact_type": "website", "value": "https://f212.com/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery", "sauna"], "tag_matches": ["leisure=sauna"]},
+      "source_refs": [{"source_name": "osm_overpass", "source_record_id": "node/3746143481", "trust_tier": "community"}]
+    },
+    {
+      "id": "op_manual_seed_orijin_restore",
+      "name": "Orijin Restore",
+      "municipality": "Vancouver",
+      "neighborhood": "Renfrew-Collingwood",
+      "lat": 49.2327,
+      "lng": -123.0247,
+      "website": "https://orijinrestore.com/",
+      "contacts": [{"contact_type": "website", "value": "https://orijinrestore.com/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery", "restore"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "orijin_restore", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_regen_recovery",
+      "name": "Regen Recovery",
+      "municipality": "Vancouver",
+      "neighborhood": "Kensington-Cedar Cottage",
+      "lat": 49.2565,
+      "lng": -123.074,
+      "website": "https://www.regenrecovery.ca/",
+      "contacts": [{"contact_type": "website", "value": "https://www.regenrecovery.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "regen_recovery", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_osm_overpass_node_3036583989",
+      "name": "Floathouse - Gastown",
+      "municipality": "Vancouver",
+      "neighborhood": "Downtown",
+      "lat": 49.2826851,
+      "lng": -123.1062671,
+      "website": "https://floathouse.ca/",
+      "contacts": [{"contact_type": "phone", "value": "+1-604-253-5628"}, {"contact_type": "website", "value": "https://floathouse.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "float", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "osm_overpass", "source_record_id": "node/3036583989", "trust_tier": "community"}]
+    },
+    {
+      "id": "op_manual_seed_fairmont_pacific_rim_spa",
+      "name": "Fairmont Pacific Rim Spa",
+      "municipality": "Vancouver",
+      "neighborhood": "Downtown",
+      "lat": 49.288,
+      "lng": -123.1164,
+      "website": "https://www.fairmont-pacific-rim.com/spa/",
+      "contacts": [{"contact_type": "website", "value": "https://www.fairmont-pacific-rim.com/spa/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "fairmont_pacific_rim_spa", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_bugu_wellness",
+      "name": "Bugu Wellness",
+      "municipality": "Port Coquitlam",
+      "neighborhood": "Central Port Coquitlam",
+      "lat": 49.262,
+      "lng": -122.7811,
+      "website": "https://www.buguwellness.com/",
+      "contacts": [{"contact_type": "website", "value": "https://www.buguwellness.com/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "bugu_wellness", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_sea2sky_sauna",
+      "name": "Sea2Sky Sauna",
+      "municipality": "Vancouver",
+      "neighborhood": "Downtown",
+      "lat": 49.2827,
+      "lng": -123.1207,
+      "website": "https://www.sea2skysauna.ca/",
+      "contacts": [{"contact_type": "website", "value": "https://www.sea2skysauna.ca/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery", "sauna"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "sea2sky_sauna", "trust_tier": "informal"}]
+    },
+    {
+      "id": "op_manual_seed_ritual_urban_retreat",
+      "name": "Ritual Urban Retreat",
+      "municipality": "Vancouver",
+      "neighborhood": "Downtown",
+      "lat": 49.2827,
+      "lng": -123.1207,
+      "website": "https://www.ritualurbanretreat.com/",
+      "contacts": [{"contact_type": "website", "value": "https://www.ritualurbanretreat.com/"}],
+      "match_reasons": {"category_matches": ["recovery_contrast_therapy"], "keyword_matches": ["contrast", "recovery"], "tag_matches": []},
+      "source_refs": [{"source_name": "manual_seed", "source_record_id": "ritual_urban_retreat", "trust_tier": "informal"}]
+    }
+  ],
+  "top_people": [
+    {
+      "id": "person_aetherhaus_team",
+      "name": "AetherHaus Team",
+      "rank": 1,
+      "influence_score": 0.2158,
+      "why_appears": "Public operator team at AetherHaus links this person to Cold plunge & contrast therapy; influence score 0.22.",
+      "source_refs": [
+        {"source_name": "manual_people_csv", "source_record_id": "aetherhaus_team", "trust_tier": "informal"},
+        {"source_name": "manual_seed", "source_record_id": "aetherhaus", "trust_tier": "informal"},
+        {"source_name": "bundle_synthesis_taxonomy", "source_record_id": "r1_bundle_synthesis_v1", "trust_tier": "informal"}
+      ]
+    }
+  ],
+  "supporting_signals": [
+    {"id": "sig_osm_overpass_node_3746143481_operator_observed", "title": "OSM wellness POI observed: F212", "related_operator_id": "op_osm_overpass_node_3746143481", "source_refs": [{"source_name": "osm_overpass", "source_record_id": "node/3746143481", "trust_tier": "community"}]},
+    {"id": "sig_osm_overpass_node_3036583989_operator_observed", "title": "OSM wellness POI observed: Floathouse - Gastown", "related_operator_id": "op_osm_overpass_node_3036583989", "source_refs": [{"source_name": "osm_overpass", "source_record_id": "node/3036583989", "trust_tier": "community"}]},
+    {"id": "sig_manual_seed_fairmont_pacific_rim_spa_operator_seed", "title": "Manual recovery seed: Fairmont Pacific Rim Spa", "related_operator_id": "op_manual_seed_fairmont_pacific_rim_spa", "source_refs": [{"source_name": "manual_seed", "source_record_id": "fairmont_pacific_rim_spa", "trust_tier": "informal"}]}
+  ],
+  "source_refs": [
+    {"source_name": "bundle_synthesis_taxonomy", "source_record_id": "r1_bundle_synthesis_v1", "trust_tier": "informal"},
+    {"source_name": "manual_seed", "source_record_id": "art_of_sauna", "trust_tier": "informal"},
+    {"source_name": "manual_seed", "source_record_id": "aetherhaus", "trust_tier": "informal"},
+    {"source_name": "manual_seed", "source_record_id": "kolm_kontrast", "trust_tier": "informal"}
+  ]
+}
+```
+
+### R1 Commands Run
+
+```bash
+python3 -m db.migrate
+python3 -m apps.jobs.runner bundle_synthesis
+python3 -m pytest -q
+python3 -m ruff check .
+python3 -m mypy .
+pnpm build
+```
+
+Results:
+
+- Bundle synthesis real run: fetched 357, persisted 224, rejected 0, errors 0.
+- `GET /bundles?limit=20`: 200, returned 7 ranked bundles.
+- `GET /bundles/bundle_cold_plunge_contrast_therapy`: 200, returned score, geography, 14 members, 1 top person, and supporting signals.
+- Python tests: 69 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Clean DB migration: `001` through `012` applied successfully in a throwaway database.
+- Web build: passed; Vite still reports the existing large chunk warning.
 - Clean migration applied through `008`.
 - Ops alert tests still pass, including existing source-stale/adapter-failure dispatch behavior.
 
