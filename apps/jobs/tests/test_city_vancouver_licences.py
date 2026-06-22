@@ -63,6 +63,14 @@ def test_city_adapter_normalizes_with_provenance_and_bc_gate() -> None:
     assert operator.source_refs[0]["url"]
     assert operator.lat == 49.2688414991874
     assert operator.lng == -123.101196475776
+    assert operator.phone == "+1 604 555 0199"
+    assert operator.website == "https://tommylurmt.example"
+    assert {contact["type"] for contact in operator.contacts} == {"phone", "website"}
+    assert all(
+        contact["source_ref"]["source_name"] == adapter.name for contact in operator.contacts
+    )
+    assert operator.payload["public_licensee_name"] == "Tommy Lu"
+    assert operator.payload["public_contact_candidates"][0]["name"] == "Tommy Lu"
 
     gate = bc_gate(
         CanonicalGeoRecord(
@@ -106,17 +114,31 @@ def test_runner_upserts_idempotently_and_logs_wa_rejection() -> None:
         "geo_point_2d": None,
         "geom": None,
     }
-    adapter = FixtureAdapter([*records, wa_record])
     repository = InMemoryRepository()
 
-    first = run_adapter(adapter, repository)
-    second = run_adapter(adapter, repository)
+    first = run_adapter(FixtureAdapter([*records, wa_record]), repository)
+    second_records = [
+        {
+            key: value
+            for key, value in record.items()
+            if key not in {"businessphone", "businesswebsite"}
+        }
+        for record in records
+    ]
+    second = run_adapter(FixtureAdapter([*second_records, wa_record]), repository)
 
     assert first.records_fetched == 4
     assert first.records_persisted == 3
     assert first.records_rejected == 1
     assert second.records_persisted == 3
     assert len(repository.operators) == 3
+    tommy = next(
+        operator for operator in repository.operators.values() if operator.name == "Tommy Lu RMT"
+    )
+    assert tommy.phone == "+1 604 555 0199"
+    assert tommy.website == "https://tommylurmt.example"
+    assert all(contact["source_ref"] for contact in tommy.contacts)
+    assert "Tommy Lu" in {person.name for person in repository.people.values()}
     assert len(repository.source_events) == 3
     assert len(repository.signals) == 3
     assert len(repository.rejected) == 2

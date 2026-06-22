@@ -10,6 +10,9 @@
         "addr:province": "BC",
         "addr:street": "6th Street",
         "addr:unit": "100",
+        "contact:email": "hello@artofsauna.ca",
+        "contact:instagram": "artofsauna",
+        "contact:phone": "+1 604 555 0100",
         "leisure": "sauna",
         "name": "Art of Sauna",
         "website": "https://artofsauna.ca/"
@@ -26,8 +29,10 @@
         "addr:postcode": "V6G 1W5",
         "addr:province": "BC",
         "addr:street": "Davie Street",
+        "contact:facebook": "aetherhaus",
         "leisure": "sauna",
         "name": "AetherHaus",
+        "phone": "+1 604 555 0111",
         "website": "https://www.aetherhaus.ca/"
       }
     },

@@ -255,7 +255,16 @@ function ResultRow({
 
 function matchesOperator(operator: Operator, query: string): boolean {
   return matches(
-    [operator.name, operator.address, operator.neighborhood, operator.municipality, operator.status, ...operator.categories],
+    [
+      operator.name,
+      operator.address,
+      operator.neighborhood,
+      operator.municipality,
+      operator.status,
+      operator.website,
+      ...(operator.contacts ?? []).map((contact) => contact.value),
+      ...operator.categories
+    ],
     query
   );
 }

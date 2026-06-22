@@ -7,6 +7,7 @@ import httpx
 
 from packages.geo.bc_gate import BC_BBOX
 from packages.schemas.canonical import CanonicalOperator
+from packages.shared.contacts import build_contact_method
 from packages.shared.ids import stable_id
 from packages.shared.normalizers import compact_address, normalize_categories, normalize_name
 from packages.shared.provenance import source_ref
@@ -96,6 +97,39 @@ class OsmOverpassAdapter:
             )
         ]
         confidence = 0.76 if lat is not None and lng is not None else 0.52
+        phone = _first_tag(tags, "contact:phone", "phone")
+        website = _first_tag(tags, "contact:website", "website")
+        email = _first_tag(tags, "contact:email", "email")
+        social_links: dict[str, str] = {}
+        contacts: list[dict[str, Any]] = []
+        ref = refs[0]
+        for contact_type, value, platform in [
+            ("phone", phone, None),
+            ("website", website, None),
+            ("email", email, None),
+            ("social", _first_tag(tags, "contact:instagram", "instagram"), "instagram"),
+            ("social", _first_tag(tags, "contact:facebook", "facebook"), "facebook"),
+        ]:
+            contact = build_contact_method(
+                contact_type=contact_type,
+                value=value,
+                platform=platform,
+                source_ref=ref,
+                confidence=confidence,
+            )
+            if contact is None:
+                continue
+            contacts.append(contact)
+            if contact_type == "social" and platform:
+                social_links[platform] = str(contact["value"])
+        normalized_website = next(
+            (str(contact["value"]) for contact in contacts if contact["type"] == "website"),
+            None,
+        )
+        normalized_phone = next(
+            (str(contact["value"]) for contact in contacts if contact["type"] == "phone"),
+            None,
+        )
 
         return [
             CanonicalOperator(
@@ -119,6 +153,10 @@ class OsmOverpassAdapter:
                 source_refs=refs,
                 confidence_score=confidence,
                 occurred_at=datetime.now(timezone.utc),
+                phone=normalized_phone,
+                website=normalized_website,
+                social_links=social_links,
+                contacts=contacts,
                 payload={
                     "tags": tags,
                     "event_type": "poi_observed",
@@ -158,4 +196,12 @@ def _municipality_from_text(value: Any) -> str | None:
         return "Surrey"
     if "richmond" in text:
         return "Richmond"
+    return None
+
+
+def _first_tag(tags: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = tags.get(key)
+        if value is not None and str(value).strip():
+            return value
     return None

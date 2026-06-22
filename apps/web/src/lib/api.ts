@@ -7,6 +7,14 @@ export type SourceRef = {
   licence: string | null;
 };
 
+export type ContactMethod = {
+  type: "phone" | "email" | "website" | "social";
+  value: string;
+  platform?: string | null;
+  source_ref: SourceRef;
+  confidence: number;
+};
+
 export type Operator = {
   id: string;
   name: string;
@@ -17,6 +25,10 @@ export type Operator = {
   neighborhood: string | null;
   lat: number;
   lng: number;
+  phone?: string | null;
+  website?: string | null;
+  social_links?: Record<string, string>;
+  contacts: ContactMethod[];
   organization_id?: string | null;
   orgbook_id?: string | null;
   confidence_score: number;
@@ -168,6 +180,16 @@ export type ObservabilitySummary = {
     api_errors_total: number;
     api_latency_ms_avg: number;
     map_query_latency_ms_avg: number;
+  };
+  database?: {
+    wellness_contact_coverage?: {
+      operator_count: number;
+      with_contact_count: number;
+      with_phone_count: number;
+      with_email_count: number;
+      with_website_count: number;
+      coverage_ratio: number;
+    };
   };
   alerts: Array<{
     condition: string;

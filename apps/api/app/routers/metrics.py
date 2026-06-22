@@ -116,6 +116,40 @@ def collect_database_metrics(conn: Any) -> dict[str, Any]:
         FROM "operator"
         """
     ).fetchone()
+    contact_coverage = conn.execute(
+        """
+        SELECT
+          count(*)::int AS total,
+          count(*) FILTER (
+            WHERE EXISTS (
+              SELECT 1 FROM operator_contact oc WHERE oc.operator_id = op.id
+            )
+          )::int AS with_contact,
+          count(*) FILTER (
+            WHERE EXISTS (
+              SELECT 1
+              FROM operator_contact oc
+              WHERE oc.operator_id = op.id AND oc.contact_type = 'phone'
+            )
+          )::int AS with_phone,
+          count(*) FILTER (
+            WHERE EXISTS (
+              SELECT 1
+              FROM operator_contact oc
+              WHERE oc.operator_id = op.id AND oc.contact_type = 'email'
+            )
+          )::int AS with_email,
+          count(*) FILTER (
+            WHERE EXISTS (
+              SELECT 1
+              FROM operator_contact oc
+              WHERE oc.operator_id = op.id AND oc.contact_type = 'website'
+            )
+          )::int AS with_website
+        FROM "operator" op
+        WHERE jsonb_array_length(op.source_refs) > 0
+        """
+    ).fetchone()
     fuzzy = cast(
         list[dict[str, Any]],
         conn.execute(
@@ -141,6 +175,8 @@ def collect_database_metrics(conn: Any) -> dict[str, Any]:
     ).fetchone()
     total = int(geocoding["total"] or 0)
     geocoded = int(geocoding["geocoded"] or 0)
+    contact_total = int(contact_coverage["total"] or 0)
+    with_contact = int(contact_coverage["with_contact"] or 0)
     return {
         "wellness_adapter_runs_total": {
             row["label"]: int(row["count"]) for row in source_status
@@ -153,6 +189,14 @@ def collect_database_metrics(conn: Any) -> dict[str, Any]:
         },
         "wellness_wa_contamination_rejects_total": int(rejected_wa["count"] or 0),
         "wellness_geocoding_hit_rate": round(geocoded / total, 4) if total else 0,
+        "wellness_contact_coverage": {
+            "operator_count": contact_total,
+            "with_contact_count": with_contact,
+            "with_phone_count": int(contact_coverage["with_phone"] or 0),
+            "with_email_count": int(contact_coverage["with_email"] or 0),
+            "with_website_count": int(contact_coverage["with_website"] or 0),
+            "coverage_ratio": round(with_contact / contact_total, 4) if contact_total else 0,
+        },
         "wellness_fuzzy_match_confidence_bucket_total": {
             row["label"]: int(row["count"]) for row in fuzzy
         },

@@ -1,6 +1,6 @@
-import { X } from "lucide-react";
+import { AtSign, Globe2, Mail, Phone, X } from "lucide-react";
 import { EntityBadge, ProvenanceBlock } from "../../components";
-import type { Operator, Signal } from "../../lib/api";
+import type { ContactMethod, Operator, Signal } from "../../lib/api";
 import { formatAgeFromHours, formatScore, sentenceCase } from "../../lib/format";
 import { colorForSignalType } from "../../lib/theme";
 
@@ -59,7 +59,18 @@ export function EntityDrawer({
           tone="opportunity"
         />
         <MetricTile label="VELOCITY" value={velocityLabel} tone="signal" />
+        <MetricTile label="CONTACTS" value={String(operator.contacts?.length ?? 0)} tone="signal" />
       </div>
+
+      <section className="wr-related-signals wr-contact-mini">
+        <h3>PUBLIC CONTACTS</h3>
+        <div>
+          {(operator.contacts ?? []).slice(0, 3).map((contact) => (
+            <ContactMini key={`${contact.type}-${contact.platform ?? ""}-${contact.value}`} contact={contact} />
+          ))}
+          {(operator.contacts ?? []).length === 0 ? <p>No source-backed contact method in current data.</p> : null}
+        </div>
+      </section>
 
       <ProvenanceBlock
         source_refs={operator.source_refs}
@@ -103,6 +114,55 @@ export function EntityDrawer({
       </section>
     </aside>
   );
+}
+
+function ContactMini({ contact }: { contact: ContactMethod }) {
+  const href = contactHref(contact);
+  return (
+    <article>
+      <span>{contactIcon(contact)}</span>
+      <div>
+        <strong>
+          <a href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">
+            {contact.value}
+          </a>
+        </strong>
+        <small>
+          {contact.platform ?? contact.type} /{" "}
+          {contact.source_ref.url ? (
+            <a href={contact.source_ref.url} target="_blank" rel="noreferrer">
+              source
+            </a>
+          ) : (
+            contact.source_ref.source_name
+          )}
+        </small>
+      </div>
+    </article>
+  );
+}
+
+function contactIcon(contact: ContactMethod) {
+  if (contact.type === "phone") {
+    return <Phone size={12} />;
+  }
+  if (contact.type === "email") {
+    return <Mail size={12} />;
+  }
+  if (contact.type === "social") {
+    return <AtSign size={12} />;
+  }
+  return <Globe2 size={12} />;
+}
+
+function contactHref(contact: ContactMethod): string {
+  if (contact.type === "phone") {
+    return `tel:${contact.value.replace(/[^0-9+]/g, "")}`;
+  }
+  if (contact.type === "email") {
+    return `mailto:${contact.value}`;
+  }
+  return contact.value;
 }
 
 function MetricTile({

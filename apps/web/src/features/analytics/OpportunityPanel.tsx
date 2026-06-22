@@ -1,17 +1,19 @@
 import { AlertTriangle } from "lucide-react";
 import { ScoreCard } from "../../components";
-import type { CategoryVelocity, OpportunityHeatmapCell, OpportunityScorecard, TrendTile } from "../../lib/api";
+import type { CategoryVelocity, Operator, OpportunityHeatmapCell, OpportunityScorecard, TrendTile } from "../../lib/api";
 import { formatScore } from "../../lib/format";
 
 type Props = {
   scorecards: OpportunityScorecard[];
   heatmapCells: OpportunityHeatmapCell[];
   velocity: CategoryVelocity[];
+  operators: Operator[];
   trends?: TrendTile[];
 };
 
-export function OpportunityPanel({ scorecards, heatmapCells, velocity, trends = [] }: Props) {
+export function OpportunityPanel({ scorecards, heatmapCells, velocity, operators, trends = [] }: Props) {
   const rankedScorecards = [...scorecards].sort((a, b) => b.opportunity_score - a.opportunity_score);
+  const reachableCount = operators.filter((operator) => (operator.contacts ?? []).length > 0).length;
   const fixtureBacked = trends.some((trend) => trend.is_stub);
   const level = heatmapCells[0]?.geo_level ?? "CSD";
   const method =
@@ -33,7 +35,7 @@ export function OpportunityPanel({ scorecards, heatmapCells, velocity, trends = 
       <div className="wr-opportunity-panel-head">
         <strong>Ranked opportunities</strong>
         <span>
-          {rankedScorecards.length || heatmapCells.length} areas / {level} level
+          {rankedScorecards.length || heatmapCells.length} areas / {reachableCount} reachable / {level} level
         </span>
       </div>
 

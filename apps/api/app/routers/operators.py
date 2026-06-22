@@ -24,6 +24,10 @@ def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
         "neighborhood": row["neighborhood"],
         "lat": float(row["lat"]),
         "lng": float(row["lng"]),
+        "phone": row.get("phone"),
+        "website": row.get("website"),
+        "social_links": row.get("social_links") or {},
+        "contacts": row.get("contacts") or [],
         "organization_id": row.get("organization_id"),
         "orgbook_id": row.get("orgbook_id"),
         "confidence_score": float(row["confidence_score"]),
@@ -46,50 +50,86 @@ def list_operators(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     clauses = [
-        "geom IS NOT NULL",
+        "op.geom IS NOT NULL",
+        "jsonb_array_length(op.source_refs) > 0",
         """
         ST_Intersects(
-          geom,
+          op.geom,
           ST_MakeEnvelope(%s, %s, %s, %s, 4326)::geography
         )
         """,
     ]
     params: list[Any] = [*parsed_bbox]
     if category:
-        clauses.append("%s = ANY(categories)")
+        clauses.append("%s = ANY(op.categories)")
         params.append(category)
     if status:
-        clauses.append("status = %s::operator_status")
+        clauses.append("op.status = %s::operator_status")
         params.append(status)
-    params.append(limit)
+    where_sql = " AND ".join(clauses)
 
     sql = f"""
       SELECT
-        id,
-        name,
-        categories,
-        status::text AS status,
-        address,
-        municipality,
-        neighborhood,
-        organization_id,
-        orgbook_id,
-        ST_Y(geom::geometry) AS lat,
-        ST_X(geom::geometry) AS lng,
-        confidence_score,
-        source_refs,
-        last_seen_at
-      FROM "operator"
-      WHERE {' AND '.join(clauses)}
-      ORDER BY last_seen_at DESC, name ASC
+        op.id,
+        op.name,
+        op.categories,
+        op.status::text AS status,
+        op.address,
+        op.municipality,
+        op.neighborhood,
+        op.phone,
+        op.website,
+        op.social_links,
+        op.organization_id,
+        op.orgbook_id,
+        ST_Y(op.geom::geometry) AS lat,
+        ST_X(op.geom::geometry) AS lng,
+        op.confidence_score,
+        op.source_refs,
+        op.last_seen_at,
+        contacts.contacts
+      FROM "operator" op
+      LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+      WHERE {where_sql}
+      ORDER BY op.last_seen_at DESC, op.name ASC
       LIMIT %s
     """
     start = time.perf_counter()
     with get_connection() as conn:
-        rows = cast(list[dict[str, Any]], conn.execute(sql, params).fetchall())
+        rows = cast(list[dict[str, Any]], conn.execute(sql, [*params, limit]).fetchall())
+        coverage = cast(
+            dict[str, Any],
+            conn.execute(
+                f"""
+                SELECT
+                  count(*)::int AS operator_count,
+                  count(*) FILTER (
+                    WHERE EXISTS (
+                      SELECT 1 FROM operator_contact oc WHERE oc.operator_id = op.id
+                    )
+                  )::int AS with_contact_count
+                FROM "operator" op
+                WHERE {where_sql}
+                """,
+                params,
+            ).fetchone(),
+        )
     runtime_metrics.observe_map_query(duration_ms=(time.perf_counter() - start) * 1000)
     items = [_operator_row(row) for row in rows]
-    return {"items": items, "meta": {"count": len(items), "bbox": parsed_bbox}}
+    total = int(coverage["operator_count"] or 0)
+    with_contact = int(coverage["with_contact_count"] or 0)
+    return {
+        "items": items,
+        "meta": {
+            "count": len(items),
+            "bbox": parsed_bbox,
+            "contact_coverage": {
+                "operator_count": total,
+                "with_contact_count": with_contact,
+                "coverage_ratio": round(with_contact / total, 4) if total else 0,
+            },
+        },
+    }
 
 
 @router.get("/operators/{operator_id}")
@@ -98,32 +138,35 @@ def get_operator(operator_id: str) -> dict[str, Any]:
         row = cast(
             dict[str, Any] | None,
             conn.execute(
-            """
-            SELECT
-              id,
-              name,
-              categories,
-              status::text AS status,
-              address,
-              municipality,
-              neighborhood,
-              organization_id,
-              orgbook_id,
-              ST_Y(geom::geometry) AS lat,
-              ST_X(geom::geometry) AS lng,
-              confidence_score,
-              source_refs,
-              licence_ref,
-              first_seen_at,
-              last_seen_at,
-              payload
-            FROM (
-              SELECT op.*, '{}'::jsonb AS payload
-              FROM "operator" op
-            ) op
-            WHERE id = %s AND geom IS NOT NULL
-            """,
-            (operator_id,),
+                f"""
+                SELECT
+                  op.id,
+                  op.name,
+                  op.categories,
+                  op.status::text AS status,
+                  op.address,
+                  op.municipality,
+                  op.neighborhood,
+                  op.phone,
+                  op.website,
+                  op.social_links,
+                  op.organization_id,
+                  op.orgbook_id,
+                  ST_Y(op.geom::geometry) AS lat,
+                  ST_X(op.geom::geometry) AS lng,
+                  op.confidence_score,
+                  op.source_refs,
+                  op.licence_ref,
+                  op.first_seen_at,
+                  op.last_seen_at,
+                  contacts.contacts
+                FROM "operator" op
+                LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+                WHERE op.id = %s
+                  AND op.geom IS NOT NULL
+                  AND jsonb_array_length(op.source_refs) > 0
+                """,
+                (operator_id,),
             ).fetchone(),
         )
         if not row:
@@ -131,29 +174,29 @@ def get_operator(operator_id: str) -> dict[str, Any]:
         signals = cast(
             list[dict[str, Any]],
             conn.execute(
-            """
-            SELECT
-              id,
-              type,
-              severity::text AS severity,
-              title,
-              summary,
-              why_it_matters,
-              source_name,
-              source_url,
-              trust_tier::text AS trust_tier,
-              occurred_at,
-              ST_Y(geom::geometry) AS lat,
-              ST_X(geom::geometry) AS lng,
-              related_operator_id,
-              confidence_score,
-              source_refs
-            FROM signal
-            WHERE related_operator_id = %s
-            ORDER BY occurred_at DESC
-            LIMIT 20
-            """,
-            (operator_id,),
+                """
+                SELECT
+                  id,
+                  type,
+                  severity::text AS severity,
+                  title,
+                  summary,
+                  why_it_matters,
+                  source_name,
+                  source_url,
+                  trust_tier::text AS trust_tier,
+                  occurred_at,
+                  ST_Y(geom::geometry) AS lat,
+                  ST_X(geom::geometry) AS lng,
+                  related_operator_id,
+                  confidence_score,
+                  source_refs
+                FROM signal
+                WHERE related_operator_id = %s
+                ORDER BY occurred_at DESC
+                LIMIT 20
+                """,
+                (operator_id,),
             ).fetchall(),
         )
 
@@ -172,3 +215,132 @@ def get_operator(operator_id: str) -> dict[str, Any]:
         for signal in signals
     ]
     return item
+
+
+@router.get("/leads")
+def list_leads(
+    category: str | None = Query(default=None),
+    municipality: str | None = Query(default=None),
+    has_contact: bool | None = Query(default=True),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    clauses = [
+        "op.geom IS NOT NULL",
+        "jsonb_array_length(op.source_refs) > 0",
+    ]
+    params: list[Any] = []
+    if category:
+        clauses.append("%s = ANY(op.categories)")
+        params.append(category)
+    if municipality:
+        clauses.append("op.municipality ILIKE %s")
+        params.append(municipality)
+    if has_contact is True:
+        clauses.append("EXISTS (SELECT 1 FROM operator_contact oc WHERE oc.operator_id = op.id)")
+    elif has_contact is False:
+        clauses.append(
+            "NOT EXISTS (SELECT 1 FROM operator_contact oc WHERE oc.operator_id = op.id)"
+        )
+    where_sql = " AND ".join(clauses)
+    with get_connection() as conn:
+        rows = cast(
+            list[dict[str, Any]],
+            conn.execute(
+                f"""
+                SELECT
+                  op.id,
+                  op.name,
+                  op.categories,
+                  op.status::text AS status,
+                  op.address,
+                  op.municipality,
+                  op.neighborhood,
+                  op.phone,
+                  op.website,
+                  op.social_links,
+                  op.organization_id,
+                  op.orgbook_id,
+                  ST_Y(op.geom::geometry) AS lat,
+                  ST_X(op.geom::geometry) AS lng,
+                  op.confidence_score,
+                  op.source_refs,
+                  op.last_seen_at,
+                  contacts.contacts,
+                  contacts.contact_count,
+                  COALESCE(signal_counts.signal_count, 0) AS signal_count,
+                  opportunity.geo_name AS opportunity_geo_name,
+                  opportunity.opportunity_score AS opportunity_score,
+                  opportunity.source_refs AS opportunity_source_refs
+                FROM "operator" op
+                LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+                LEFT JOIN LATERAL (
+                  SELECT count(*)::int AS signal_count
+                  FROM signal s
+                  WHERE s.related_operator_id = op.id
+                    AND jsonb_array_length(s.source_refs) > 0
+                ) signal_counts ON TRUE
+                LEFT JOIN LATERAL (
+                  SELECT os.geo_name, os.opportunity_score, os.source_refs
+                  FROM opportunity_scorecard os
+                  WHERE os.category = op.categories[1]
+                    AND jsonb_array_length(os.source_refs) > 0
+                    AND (
+                      lower(os.geo_name) = lower(COALESCE(op.municipality, ''))
+                      OR lower(os.geo_name) = lower(COALESCE(op.neighborhood, ''))
+                      OR lower(os.geo_name) LIKE (
+                        '%%' || lower(COALESCE(op.municipality, '')) || '%%'
+                      )
+                    )
+                  ORDER BY os.opportunity_score DESC
+                  LIMIT 1
+                ) opportunity ON TRUE
+                WHERE {where_sql}
+                ORDER BY
+                  contacts.contact_count DESC,
+                  opportunity.opportunity_score DESC NULLS LAST,
+                  op.name ASC
+                LIMIT %s
+                """,
+                [*params, limit],
+            ).fetchall(),
+        )
+    return {
+        "items": [_lead_row(row) for row in rows],
+        "meta": {"count": len(rows), "has_contact": has_contact},
+    }
+
+
+def _lead_row(row: dict[str, Any]) -> dict[str, Any]:
+    item = _operator_row(row)
+    item["contact_count"] = int(row.get("contact_count") or 0)
+    item["opportunity_context"] = {
+        "signal_count": int(row.get("signal_count") or 0),
+        "geo_name": row.get("opportunity_geo_name"),
+        "opportunity_score": (
+            float(row["opportunity_score"]) if row.get("opportunity_score") is not None else None
+        ),
+        "source_refs": row.get("opportunity_source_refs") or [],
+    }
+    return item
+
+
+def _contacts_lateral_sql() -> str:
+    return """
+      SELECT
+        COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'type', oc.contact_type,
+              'value', oc.value,
+              'platform', oc.platform,
+              'source_ref', oc.source_ref,
+              'confidence', oc.confidence_score
+            )
+            ORDER BY oc.contact_type, oc.value
+          ),
+          '[]'::jsonb
+        ) AS contacts,
+        count(oc.id)::int AS contact_count
+      FROM operator_contact oc
+      WHERE oc.operator_id = op.id
+    """

@@ -31,3 +31,10 @@ codex-build.log
 codex-design.log
 .codex-design-done
 .codex-design-failed
+
+# codex actionable-intel loop orchestration (local only)
+.codex-intel-prompt*.md
+.codex-intel-runner.sh
+codex-intel.log
+.codex-intel-cm*-done
+.codex-intel-cm*-failed
