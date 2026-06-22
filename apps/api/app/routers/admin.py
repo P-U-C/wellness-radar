@@ -43,7 +43,7 @@ class AlertSubscriptionPayload(BaseModel):
 
 
 class SnapshotPayload(BaseModel):
-    snapshot_type: Literal["operators", "signals", "graph"]
+    snapshot_type: Literal["operators", "signals", "graph", "leads", "people"]
     format: Literal["json", "csv"] = "json"
 
 
@@ -467,7 +467,7 @@ def dispatch_alerts(
 
 @router.get("/exports/{dataset}", response_model=None)
 def export_dataset(
-    dataset: Literal["operators", "signals", "graph"],
+    dataset: Literal["operators", "signals", "graph", "leads", "people"],
     _principal: ExportReadPrincipal,
     format: Literal["json", "csv"] = Query(default="json"),
 ) -> Any:
@@ -529,7 +529,10 @@ def create_snapshot(
         "snapshot_type": payload.snapshot_type,
         "format": payload.format,
         "row_count": len(rows),
-        "sample_ids": [str(row.get("id") or row.get("record_id")) for row in rows[:10]],
+        "sample_ids": [
+            str(row.get("id") or row.get("record_id") or row.get("operator_id"))
+            for row in rows[:10]
+        ],
     }
     with get_connection() as conn:
         conn.execute(
@@ -585,12 +588,83 @@ def _export_rows(dataset: str) -> list[dict[str, Any]]:
                       address,
                       municipality,
                       neighborhood,
+                      phone,
+                      website,
+                      social_links,
                       ST_Y(geom::geometry) AS lat,
                       ST_X(geom::geometry) AS lng,
                       confidence_score,
                       source_refs,
                       last_seen_at AS freshness_at
                     FROM "operator"
+                    WHERE jsonb_array_length(source_refs) > 0
+                    ORDER BY last_seen_at DESC, name ASC
+                    """
+                ).fetchall(),
+            )
+        if dataset == "leads":
+            return cast(
+                list[dict[str, Any]],
+                conn.execute(
+                    """
+                    SELECT
+                      op.id AS operator_id,
+                      op.name AS operator_name,
+                      op.categories,
+                      op.status::text AS status,
+                      op.address,
+                      op.municipality,
+                      op.neighborhood,
+                      oc.contact_type,
+                      oc.value AS contact_value,
+                      oc.platform AS contact_platform,
+                      oc.confidence_score AS contact_confidence,
+                      oc.source_ref->>'source_name' AS contact_source_name,
+                      oc.source_ref->>'url' AS contact_source_url,
+                      oc.source_ref->>'source_record_id' AS contact_source_record_id,
+                      oc.source_ref->>'trust_tier' AS contact_source_trust_tier,
+                      oc.source_ref AS contact_source_ref,
+                      opportunity.geo_name AS opportunity_geo_name,
+                      opportunity.opportunity_score AS opportunity_score,
+                      op.source_refs AS operator_source_refs,
+                      op.last_seen_at AS freshness_at
+                    FROM "operator" op
+                    JOIN operator_contact oc ON oc.operator_id = op.id
+                    LEFT JOIN LATERAL (
+                      SELECT os.geo_name, os.opportunity_score
+                      FROM opportunity_scorecard os
+                      WHERE os.category = op.categories[1]
+                        AND jsonb_array_length(os.source_refs) > 0
+                        AND (
+                          lower(os.geo_name) = lower(COALESCE(op.municipality, ''))
+                          OR lower(os.geo_name) = lower(COALESCE(op.neighborhood, ''))
+                          OR lower(os.geo_name) LIKE (
+                            '%%' || lower(COALESCE(op.municipality, '')) || '%%'
+                          )
+                        )
+                      ORDER BY os.opportunity_score DESC
+                      LIMIT 1
+                    ) opportunity ON TRUE
+                    WHERE jsonb_array_length(op.source_refs) > 0
+                    ORDER BY op.name ASC, oc.contact_type ASC, oc.value ASC
+                    """
+                ).fetchall(),
+            )
+        if dataset == "people":
+            return cast(
+                list[dict[str, Any]],
+                conn.execute(
+                    """
+                    SELECT
+                      id,
+                      name,
+                      roles,
+                      affiliations,
+                      public_profiles,
+                      confidence_score,
+                      source_refs,
+                      last_seen_at AS freshness_at
+                    FROM person
                     WHERE jsonb_array_length(source_refs) > 0
                     ORDER BY last_seen_at DESC, name ASC
                     """
