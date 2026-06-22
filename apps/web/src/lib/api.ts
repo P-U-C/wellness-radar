@@ -450,7 +450,7 @@ async function getJson<T>(
 }
 
 export async function fetchOperators(category?: string): Promise<Operator[]> {
-  const params = new URLSearchParams({ bbox: "-123.3,49.0,-122.5,49.4" });
+  const params = new URLSearchParams({ bbox: "-123.3,49.0,-122.5,49.4", limit: "5000" });
   if (category && category !== "all") {
     params.set("category", category);
   }
