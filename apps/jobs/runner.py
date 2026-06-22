@@ -1519,6 +1519,7 @@ def main() -> None:
             "statcan_denominators",
             "neighborhood_assignment",
             "opportunity_analytics",
+            "bundle_synthesis",
             "proposition_synthesis",
             "peer_city_trends",
             "influence_scoring",
@@ -1568,6 +1569,11 @@ def main() -> None:
         from apps.jobs.analytics.opportunity import run_opportunity_analytics
 
         print(_metrics_dict(run_opportunity_analytics()))
+        return
+    if args.adapter == "bundle_synthesis":
+        from apps.jobs.analytics.bundles import run_bundle_synthesis
+
+        print(_metrics_dict(run_bundle_synthesis()))
         return
     if args.adapter == "proposition_synthesis":
         from apps.jobs.analytics.propositions import run_proposition_synthesis
@@ -1663,6 +1669,7 @@ def run_m2_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[st
 
 
 def run_m3_sequence() -> dict[str, Any]:
+    from apps.jobs.analytics.bundles import run_bundle_synthesis
     from apps.jobs.analytics.denominators import run_statcan_denominators
     from apps.jobs.analytics.entity_resolution import run_entity_resolution
     from apps.jobs.analytics.graph import run_graph_build
@@ -1681,6 +1688,7 @@ def run_m3_sequence() -> dict[str, Any]:
     results["peer_city_trends"] = _run_safely(run_peer_city_trends)
     results["people_graph"] = _run_safely(run_graph_build)
     results["influence_scoring"] = _run_safely(run_influence_scoring)
+    results["bundle_synthesis"] = _run_safely(run_bundle_synthesis)
     return results
 
 
