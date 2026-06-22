@@ -23,6 +23,7 @@ def test_alert_condition_catalog_covers_production_conditions() -> None:
         "no_signals_window",
         "migration_failure",
         "ai_cost_threshold",
+        "daily_market_brief",
     }
 
 
@@ -137,6 +138,41 @@ def test_webhook_provider_posts_json_and_records_delivery_status() -> None:
     assert client.requests[0]["json"]["condition"] == "adapter_run_failed"
     assert conn.inserted[0] is not None
     assert conn.inserted[0][2] == "delivered"
+
+
+def test_webhook_provider_delivers_daily_market_brief_payload() -> None:
+    evaluation = AlertEvaluation(
+        condition="daily_market_brief",
+        firing=True,
+        severity="info",
+        summary="Daily market brief for 2026-06-22",
+        details={
+            "brief_date": "2026-06-22",
+            "top_actions": [
+                {
+                    "title": "Scout Vancouver for recovery",
+                    "source_refs": [{"source_name": "fixture"}],
+                }
+            ],
+        },
+    )
+    subscription = {
+        "id": "sub-brief",
+        "conditions": ["daily_market_brief"],
+        "channel": "webhook",
+        "target": None,
+    }
+    conn = FakeConn()
+    client = FakeWebhookClient(FakeWebhookResponse(status_code=204))
+
+    result = WebhookAlertProvider(
+        "https://example.test/brief",
+        client=client,  # type: ignore[arg-type]
+    ).dispatch(conn, subscription, evaluation)
+
+    assert result.status == "delivered"
+    assert client.requests[0]["json"]["condition"] == "daily_market_brief"
+    assert client.requests[0]["json"]["details"]["brief_date"] == "2026-06-22"
 
 
 def test_webhook_provider_records_failed_post_without_raising() -> None:

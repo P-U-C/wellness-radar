@@ -1521,8 +1521,10 @@ def main() -> None:
             "peer_city_trends",
             "influence_scoring",
             "people_graph",
+            "daily_brief",
             "m2",
             "m3",
+            "cm2",
         ],
     )
     parser.add_argument("--limit", type=int, default=100)
@@ -1574,11 +1576,27 @@ def main() -> None:
 
         print(_metrics_dict(run_influence_scoring()))
         return
+    if args.adapter == "daily_brief":
+        from apps.jobs.analytics.daily_brief import generate_daily_brief
+
+        brief = generate_daily_brief(window_hours=72)
+        print(
+            {
+                "brief_id": brief.brief_id,
+                "brief_date": brief.brief_date.isoformat(),
+                "status": brief.status,
+                "counts": brief.counts,
+            }
+        )
+        return
     if args.adapter == "m2":
         print(run_m2_sequence(limit=args.limit, people_csv=args.people_csv))
         return
     if args.adapter == "m3":
         print(run_m3_sequence())
+        return
+    if args.adapter == "cm2":
+        print(run_cm2_sequence(limit=args.limit, people_csv=args.people_csv))
         return
 
     metrics = run_adapter(adapter_for_name(args.adapter, args.limit))
@@ -1633,6 +1651,22 @@ def run_m3_sequence() -> dict[str, Any]:
     results["peer_city_trends"] = _run_safely(run_peer_city_trends)
     results["people_graph"] = _run_safely(run_graph_build)
     results["influence_scoring"] = _run_safely(run_influence_scoring)
+    return results
+
+
+def run_cm2_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[str, Any]:
+    from apps.jobs.analytics.daily_brief import generate_daily_brief
+
+    results: dict[str, Any] = {}
+    results["m2"] = run_m2_sequence(limit=limit, people_csv=people_csv)
+    results["m3"] = run_m3_sequence()
+    brief = generate_daily_brief(window_hours=72)
+    results["daily_brief"] = {
+        "brief_id": brief.brief_id,
+        "brief_date": brief.brief_date.isoformat(),
+        "status": brief.status,
+        "counts": brief.counts,
+    }
     return results
 
 

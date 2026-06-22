@@ -35,6 +35,19 @@ def test_build_source_schedules_skips_manual_and_fixture_sources() -> None:
     ]
 
 
+def test_scheduler_config_registers_daily_brief_cadence() -> None:
+    config = SchedulerConfig.from_env(
+        {
+            "WR_BRIEF_INTERVAL_SECONDS": "17",
+            "WR_BRIEF_WINDOW_HOURS": "48",
+        },
+        database_url="postgresql://example",
+    )
+
+    assert config.brief_seconds == 17
+    assert config.brief_window_hours == 48
+
+
 def test_run_source_with_retry_uses_bounded_exponential_backoff() -> None:
     calls = 0
     sleeps: list[float] = []
@@ -60,6 +73,8 @@ def test_run_source_with_retry_uses_bounded_exponential_backoff() -> None:
         backoff_base_seconds=1.0,
         backoff_max_seconds=1.5,
         ingest_limit=10,
+        brief_seconds=86400,
+        brief_window_hours=72,
         database_url="postgresql://example",
     )
 

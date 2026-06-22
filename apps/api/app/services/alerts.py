@@ -20,6 +20,7 @@ ALERT_CONDITIONS = [
     "no_signals_window",
     "migration_failure",
     "ai_cost_threshold",
+    "daily_market_brief",
 ]
 
 

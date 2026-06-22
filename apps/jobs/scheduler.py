@@ -16,10 +16,12 @@ from psycopg.rows import dict_row
 from apps.api.app.config import settings
 from apps.api.app.services.alerts import (
     AlertEvaluation,
+    AlertProvider,
     dispatch_alert_evaluations,
     evaluate_alert_conditions,
 )
 from apps.api.app.services.audit import write_audit_log
+from apps.jobs.analytics.daily_brief import BRIEF_CONDITION, generate_daily_brief
 from apps.jobs.importers.people_csv import import_people_csv
 from apps.jobs.runner import (
     DatabaseRepository,
@@ -49,6 +51,8 @@ class SchedulerConfig:
     backoff_base_seconds: float
     backoff_max_seconds: float
     ingest_limit: int
+    brief_seconds: int
+    brief_window_hours: int
     database_url: str
 
     @classmethod
@@ -78,6 +82,16 @@ class SchedulerConfig:
                 values,
                 "WR_SCHED_INGEST_LIMIT",
                 default=_env_int(values, "M2_INGEST_LIMIT", default=75),
+            ),
+            brief_seconds=_env_int(
+                values,
+                "WR_BRIEF_INTERVAL_SECONDS",
+                default=24 * 60 * 60,
+            ),
+            brief_window_hours=_env_int(
+                values,
+                "WR_BRIEF_WINDOW_HOURS",
+                default=72,
             ),
             database_url=database_url or settings.database_url,
         )
@@ -252,6 +266,43 @@ def dispatch_stale_source_alerts(*, database_url: str | None = None) -> dict[str
         return result
 
 
+def dispatch_daily_market_brief(
+    *,
+    database_url: str | None = None,
+    window_hours: int | None = None,
+    provider: AlertProvider | None = None,
+) -> dict[str, Any]:
+    brief = generate_daily_brief(database_url=database_url, window_hours=window_hours)
+    evaluation = AlertEvaluation(
+        condition=BRIEF_CONDITION,
+        firing=True,
+        severity="info",
+        summary=f"Daily market brief for {brief.brief_date.isoformat()}",
+        details=brief.as_dict(),
+    )
+    with psycopg.connect(database_url or settings.database_url, row_factory=dict_row) as conn:
+        result = dispatch_alert_evaluations(conn, [evaluation], provider=provider)
+        write_audit_log(
+            conn,
+            action="daily_market_brief_dispatched",
+            actor_role="system",
+            actor_id="jobs-scheduler",
+            metadata={
+                **result,
+                "brief_id": brief.brief_id,
+                "brief_date": brief.brief_date.isoformat(),
+                "status": brief.status,
+                "counts": brief.counts,
+            },
+        )
+        return {
+            **result,
+            "brief_id": brief.brief_id,
+            "brief_date": brief.brief_date.isoformat(),
+            "status": brief.status,
+        }
+
+
 async def run_scheduler_forever(config: SchedulerConfig | None = None) -> None:
     active_config = config or SchedulerConfig.from_env()
     if not active_config.enabled:
@@ -269,6 +320,7 @@ async def run_scheduler_forever(config: SchedulerConfig | None = None) -> None:
     ]
     logger.info("registered %s recurring source job(s)", len(runtimes))
     next_freshness_monotonic = now + active_config.freshness_seconds
+    next_brief_monotonic = now
     stop_event = asyncio.Event()
     _install_stop_handlers(stop_event)
 
@@ -289,6 +341,14 @@ async def run_scheduler_forever(config: SchedulerConfig | None = None) -> None:
                 database_url=active_config.database_url,
             )
             next_freshness_monotonic = loop_now + active_config.freshness_seconds
+
+        if loop_now >= next_brief_monotonic:
+            await asyncio.to_thread(
+                dispatch_daily_market_brief,
+                database_url=active_config.database_url,
+                window_hours=active_config.brief_window_hours,
+            )
+            next_brief_monotonic = loop_now + active_config.brief_seconds
 
         with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(
