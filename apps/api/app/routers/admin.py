@@ -10,8 +10,15 @@ from pydantic import BaseModel, Field
 
 from apps.api.app.db.connection import get_connection
 from apps.api.app.security import ROLE_PERMISSIONS, Principal, require_permission
-from apps.api.app.services.alerts import ALERT_CONDITIONS, evaluate_alert_conditions
+from apps.api.app.services.alerts import (
+    ALERT_CONDITIONS,
+    DatabaseAlertProvider,
+    configured_alert_provider,
+    dispatch_firing_alerts,
+    evaluate_alert_conditions,
+)
 from apps.api.app.services.audit import audit_api_action
+from packages.shared.cadence import sla_hours_for_cadence
 from packages.shared.ids import stable_id
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -182,6 +189,14 @@ def source_freshness(
                   FROM source_run
                   ORDER BY source_name, started_at DESC
                 ),
+                latest_success AS (
+                  SELECT DISTINCT ON (source_name)
+                    source_name,
+                    completed_at AS last_success_completed_at
+                  FROM source_run
+                  WHERE status = 'success'
+                  ORDER BY source_name, completed_at DESC
+                ),
                 rejected AS (
                   SELECT source_name, count(*)::int AS rejected_count
                   FROM rejected_record
@@ -202,9 +217,11 @@ def source_freshness(
                   latest.records_rejected,
                   latest.error_count,
                   latest.error_message,
+                  latest_success.last_success_completed_at,
                   COALESCE(rejected.rejected_count, 0) AS rejected_count
                 FROM source_registry sr
                 LEFT JOIN latest ON latest.source_name = sr.source_name
+                LEFT JOIN latest_success ON latest_success.source_name = sr.source_name
                 LEFT JOIN rejected ON rejected.source_name = sr.source_name
                 WHERE sr.enabled = TRUE
                 ORDER BY sr.phase ASC, sr.source_name ASC
@@ -214,11 +231,12 @@ def source_freshness(
     items = []
     stale_count = 0
     for row in rows:
-        sla_hours = _sla_hours(str(row["cadence"]))
+        sla_hours = sla_hours_for_cadence(str(row["cadence"]))
         completed_at = row["completed_at"]
-        is_stale = completed_at is None
-        if completed_at is not None:
-            age_hours = _age_hours(completed_at)
+        last_success_completed_at = row["last_success_completed_at"]
+        is_stale = last_success_completed_at is None
+        if last_success_completed_at is not None:
+            age_hours = _age_hours(last_success_completed_at)
             is_stale = age_hours > sla_hours
         else:
             age_hours = None
@@ -231,6 +249,9 @@ def source_freshness(
                 if row["started_at"] is not None
                 else None,
                 "completed_at": completed_at.isoformat() if completed_at is not None else None,
+                "last_success_completed_at": last_success_completed_at.isoformat()
+                if last_success_completed_at is not None
+                else None,
                 "sla_hours": sla_hours,
                 "age_hours": age_hours,
                 "is_stale": is_stale,
@@ -411,49 +432,37 @@ def dispatch_alert_stub(
     principal: AdminWritePrincipal,
 ) -> dict[str, Any]:
     with get_connection() as conn:
-        evaluations = [item for item in evaluate_alert_conditions(conn) if item.firing]
-        subscriptions = cast(
-            list[dict[str, Any]],
-            conn.execute(
-                """
-                SELECT id, conditions
-                FROM alert_subscription
-                WHERE enabled = TRUE
-                """
-            ).fetchall(),
+        result = dispatch_firing_alerts(
+            conn,
+            provider=DatabaseAlertProvider(status="stubbed"),
         )
-        dispatch_count = 0
-        for subscription in subscriptions:
-            subscribed = set(subscription["conditions"])
-            for evaluation in evaluations:
-                if evaluation.condition not in subscribed:
-                    continue
-                conn.execute(
-                    """
-                    INSERT INTO alert_dispatch (subscription_id, condition, status, payload)
-                    VALUES (%s, %s, 'stubbed', %s)
-                    """,
-                    (
-                        subscription["id"],
-                        evaluation.condition,
-                        Jsonb(
-                            {
-                                "summary": evaluation.summary,
-                                "severity": evaluation.severity,
-                                "details": evaluation.details,
-                            }
-                        ),
-                    ),
-                )
-                dispatch_count += 1
         audit_api_action(
             conn,
             request=request,
             principal=principal,
             action="alert_dispatch_stubbed",
-            metadata={"dispatch_count": dispatch_count},
+            metadata=result,
         )
-    return {"status": "stubbed", "dispatch_count": dispatch_count}
+    return {"status": "stubbed", **result}
+
+
+@router.post("/alerts/dispatch", status_code=202)
+def dispatch_alerts(
+    request: Request,
+    principal: AdminWritePrincipal,
+) -> dict[str, Any]:
+    provider = configured_alert_provider()
+    with get_connection() as conn:
+        result = dispatch_firing_alerts(conn, provider=provider)
+        audit_api_action(
+            conn,
+            request=request,
+            principal=principal,
+            action="alert_dispatched",
+            metadata={"provider": provider.name, **result},
+        )
+    status = "failed" if result["failed_count"] else "delivered"
+    return {"status": status, "provider": provider.name, **result}
 
 
 @router.get("/exports/{dataset}", response_model=None)
@@ -673,19 +682,6 @@ def _csv_value(value: Any) -> Any:
     if isinstance(value, (dict, list)):
         return str(value)
     return value
-
-
-def _sla_hours(cadence: str) -> int:
-    lowered = cadence.lower()
-    if "hour" in lowered:
-        return 24
-    if "daily" in lowered:
-        return 36
-    if "weekly" in lowered:
-        return 24 * 8
-    if "manual" in lowered:
-        return 24 * 90
-    return 24 * 14
 
 
 def _age_hours(completed_at: Any) -> float:
