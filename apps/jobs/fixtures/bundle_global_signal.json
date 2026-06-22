@@ -1,0 +1,98 @@
+{
+  "fixture_recorded_at": "2026-06-22T00:00:00Z",
+  "fixture_note": "Recorded fallback-shaped aggregate signals for R3. Used only when live Overpass or GDELT requests fail in auto mode; rows must be labeled fixture_fallback.",
+  "gdelt": {
+    "cold_plunge_contrast_therapy": [0.05, 0.06, 0.08, 0.11, 0.14, 0.18],
+    "spa_thermal": [0.21, 0.22, 0.2, 0.21, 0.22, 0.21],
+    "boutique_strength": [0.18, 0.17, 0.16, 0.16, 0.15, 0.14],
+    "yoga_pilates": [0.28, 0.29, 0.29, 0.3, 0.31, 0.32],
+    "longevity_iv": [0.03, 0.04, 0.05, 0.07, 0.09, 0.11],
+    "allied_health_bodywork": [0.16, 0.16, 0.17, 0.16, 0.16, 0.17],
+    "social_wellness_clubs": [0.02, 0.03, 0.04, 0.06, 0.07, 0.09],
+    "mind_breathwork": [0.07, 0.08, 0.08, 0.08, 0.08, 0.09],
+    "wellness_retail": [0.14, 0.13, 0.13, 0.12, 0.11, 0.11]
+  },
+  "osm_counts": {
+    "cold_plunge_contrast_therapy": {
+      "Vancouver": 5,
+      "Austin": 9,
+      "New York": 18,
+      "Los Angeles": 15,
+      "London": 21,
+      "Berlin": 12,
+      "Toronto": 8
+    },
+    "spa_thermal": {
+      "Vancouver": 44,
+      "Austin": 38,
+      "New York": 185,
+      "Los Angeles": 132,
+      "London": 121,
+      "Berlin": 96,
+      "Toronto": 61
+    },
+    "boutique_strength": {
+      "Vancouver": 58,
+      "Austin": 72,
+      "New York": 264,
+      "Los Angeles": 201,
+      "London": 238,
+      "Berlin": 116,
+      "Toronto": 93
+    },
+    "yoga_pilates": {
+      "Vancouver": 71,
+      "Austin": 64,
+      "New York": 312,
+      "Los Angeles": 248,
+      "London": 277,
+      "Berlin": 111,
+      "Toronto": 119
+    },
+    "longevity_iv": {
+      "Vancouver": 4,
+      "Austin": 8,
+      "New York": 22,
+      "Los Angeles": 19,
+      "London": 17,
+      "Berlin": 9,
+      "Toronto": 7
+    },
+    "allied_health_bodywork": {
+      "Vancouver": 89,
+      "Austin": 74,
+      "New York": 294,
+      "Los Angeles": 238,
+      "London": 267,
+      "Berlin": 143,
+      "Toronto": 148
+    },
+    "social_wellness_clubs": {
+      "Vancouver": 3,
+      "Austin": 7,
+      "New York": 18,
+      "Los Angeles": 11,
+      "London": 16,
+      "Berlin": 10,
+      "Toronto": 6
+    },
+    "mind_breathwork": {
+      "Vancouver": 8,
+      "Austin": 11,
+      "New York": 33,
+      "Los Angeles": 24,
+      "London": 29,
+      "Berlin": 15,
+      "Toronto": 12
+    },
+    "wellness_retail": {
+      "Vancouver": 34,
+      "Austin": 29,
+      "New York": 156,
+      "Los Angeles": 121,
+      "London": 96,
+      "Berlin": 58,
+      "Toronto": 49
+    }
+  }
+}
