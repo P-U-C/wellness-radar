@@ -469,6 +469,174 @@ Results:
 - Web lint/typecheck/build: passed; Vite still reports the existing large chunk warning from map/graph dependencies.
 - Clean PostGIS migrations applied from empty DB: `001`, `002`, `003`, `004`, `005`, `006`, `007`.
 
+## CM2 — Daily Brief
+
+### What Landed
+
+- Added `daily_brief` persistence and `opportunity_score_snapshot` history in migration `008_daily_brief.sql`.
+- Added deterministic daily brief generation in `apps/jobs/analytics/daily_brief.py`.
+- Brief sections cover:
+  - changed/newly planned operators;
+  - new high-severity or official/reputable signals;
+  - opportunity score movement versus the previous score snapshot;
+  - newly reachable public leads from `operator_contact`.
+- Each section item and each action carries `source_refs`; generation raises if a displayed item/action is unbacked.
+- Top actions are ranked deterministically from evidence rows and cite those evidence rows.
+- AI narrative enrichment is optional and only used when `ANTHROPIC_API_KEY` is present; deterministic template text is the default and facts/items remain source-backed.
+- Added public reader routes:
+  - `GET /api/brief`
+  - `GET /api/brief/{date}`
+- Added scheduler delivery on the existing alert rail with separate condition `daily_market_brief`; ops-health alerts remain separate.
+- Added a console Today / Market Brief panel showing top actions, sections, and source links.
+
+### Fixture Loop Evidence
+
+Clean DB migration:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m db.migrate
+```
+
+Applied cleanly from empty DB through `001`-`008`.
+
+Baseline fixture run:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m apps.jobs.runner manual_seed --limit 12
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m apps.jobs.runner m3
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m apps.jobs.runner daily_brief
+```
+
+Baseline results:
+
+- Manual seed: 12 fetched, 12 persisted, 0 rejected.
+- M3 analytics: 32 opportunity rows persisted.
+- First brief status: `initial_snapshot`.
+- First brief counts: `changed_operators=8`, `new_signals=0`, `opportunity_movement=0`, `new_reachable_leads=8`, `top_actions=3`.
+- Opportunity movement is intentionally `0` on first run because score movement requires at least two analytics/brief snapshots.
+
+Changed fixture applied after the first brief:
+
+- Added source-backed planned operator `Kitsilano Recovery Lab` from `city_vancouver_business_licences`.
+- Added source-backed public website contact for that operator.
+- Added source-backed official high-severity recall signal from `health_canada_recalls`.
+- Raised backed scorecard `score_recovery_contrast_therapy_5915022` from `0.8118` to `0.9118`.
+
+Second brief generation:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m apps.jobs.runner daily_brief
+```
+
+Second brief counts:
+
+```json
+{
+  "changed_operators": 1,
+  "new_signals": 1,
+  "opportunity_movement": 1,
+  "new_reachable_leads": 1,
+  "top_actions": 3,
+  "window_hours": 0.015,
+  "had_prior_brief": true,
+  "had_prior_opportunity_snapshot": true
+}
+```
+
+Actual second brief text:
+
+```text
+Daily Market Brief - 2026-06-22
+Window: 2026-06-22 18:42 to 2026-06-22 18:43 UTC.
+Material source-backed changes were detected across 4 brief section(s).
+
+Top actions:
+1. Scout Vancouver for recovery and contrast therapy - Opportunity score is rising and 1 newly reachable lead(s) appeared.
+2. Review recall signal - Health Canada recall notice for recovery device fixture: Official fixture recall signal for a recovery device category.
+3. Track planned opening: Kitsilano Recovery Lab - recovery and contrast therapy operator surfaced in Kitsilano; status is planned.
+
+Change counts:
+- Changed operators: 1
+- New high-trust signals: 1
+- Opportunity movements: 1
+- New reachable leads: 1
+
+Changed operators:
+- Planned operator: Kitsilano Recovery Lab - recovery and contrast therapy operator surfaced in Kitsilano; status is planned.
+
+New high-trust signals:
+- Health Canada recall notice for recovery device fixture - Official fixture recall signal for a recovery device category.
+
+Opportunity movement:
+- Vancouver recovery and contrast therapy gap - recovery and contrast therapy in Vancouver is rising at 0.91 (+0.10 vs prior snapshot).
+
+New reachable leads:
+- New reachable lead: Kitsilano Recovery Lab - Kitsilano Recovery Lab gained public website data (1 contact row(s)).
+```
+
+Provenance check from the persisted second brief:
+
+- Top action 1 cited `opportunity_movement` and `new_reachable_leads` evidence rows with 13 aggregate source refs.
+- Top action 2 cited the `new_signals` row with 1 source ref.
+- Top action 3 cited the `changed_operators` row with 1 source ref.
+- Every displayed section item had at least one `source_refs` entry.
+
+API checks against the clean fixture DB:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop uvicorn apps.api.app.main:app --host 127.0.0.1 --port 8001
+curl -s http://127.0.0.1:8001/api/brief
+curl -s http://127.0.0.1:8001/api/brief/2026-06-22
+```
+
+Results:
+
+- `/api/brief` returned the latest brief with sections, 3 actions, counts, and provenance.
+- `/api/brief/2026-06-22` returned the same date-specific brief.
+- OpenAPI contained both `/api/brief` and `/api/brief/{brief_date}`.
+
+Empty-day path:
+
+- A third generation with no new source-backed changes returned `status=no_material_changes`.
+- Counts were all `0`; `top_actions=[]`.
+- Brief text included: `No material source-backed market changes were detected in the comparison window.`
+
+Scheduler/webhook proof:
+
+- Inserted `alert_subscription` with condition `daily_market_brief` and channel `webhook`.
+- Dispatched via `dispatch_daily_market_brief(..., provider=WebhookAlertProvider('http://127.0.0.1:8002/hook'))`.
+- Local webhook sink received condition `daily_market_brief`.
+- `alert_dispatch` recorded `status=delivered` and payload delivery status `delivered`.
+
+### CM2 Commands Run
+
+```bash
+python3 -m pytest -q
+python3 -m ruff check .
+python3 -m mypy apps packages db
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m apps.jobs.runner manual_seed --limit 12
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m apps.jobs.runner m3
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm2_loop python3 -m apps.jobs.runner daily_brief
+curl -s http://127.0.0.1:8001/api/brief
+curl -s http://127.0.0.1:8001/api/brief/2026-06-22
+```
+
+Results:
+
+- Python tests: 57 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web lint/typecheck: passed.
+- Web unit tests: 9 passed.
+- Web build: passed; Vite still reports the existing large chunk warning.
+- Clean migration applied through `008`.
+- Ops alert tests still pass, including existing source-stale/adapter-failure dispatch behavior.
+
 ## Final Status
 
 ### Production Gate
@@ -487,6 +655,8 @@ Results:
 - M2 MVP private alpha: done.
 - M3 Intelligence beta: done, with fixture-backed peer-city trends clearly labelled.
 - M4 Production hardening: done for build scope, with honest production/human-review gaps listed above.
+- CM1 Contacts/deal-flow layer: done.
+- CM2 Daily market-intelligence brief: done.
 
 ### Run The Whole System
 
@@ -510,9 +680,9 @@ curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/adm
 
 ### Final Test Count
 
-- Python: 44 passing.
-- Web: 3 passing.
-- Total: 47 passing.
+- Python: 57 passing.
+- Web: 9 passing.
+- Total: 66 passing.
 
 ### Remaining Gaps Before Public Production
 
@@ -521,4 +691,4 @@ curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/adm
 - Add reviewed CRE inputs only after source rights and field allowlists are approved.
 - Configure real deployment secrets, external alert dispatch, monitoring sinks, and incident ownership outside the repo.
 - Assign a public correction workflow owner and SLA before exposing people scoring publicly.
-- Replace the idle scheduler placeholder with real scheduled jobs or an external orchestrator.
+- Decide whether production uses the in-repo scheduler loop or an external orchestrator for daily brief and ingest cadence ownership.
