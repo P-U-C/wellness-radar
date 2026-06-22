@@ -94,8 +94,8 @@ export function App() {
   const [category, setCategory] = useState("all");
   const [opportunityGeoLevel, setOpportunityGeoLevel] = useState<"CSD" | "neighborhood">("neighborhood");
   const [peopleSort] = useState("influence");
-  const [minConfidence, setMinConfidence] = useState(0.6);
-  const [minOpportunity, setMinOpportunity] = useState(0.55);
+  const [minConfidence, setMinConfidence] = useState(0.0);
+  const [minOpportunity, setMinOpportunity] = useState(0.0);
   const [layers, setLayers] = useState<MapLayers>({
     operators: true,
     signals: true,
