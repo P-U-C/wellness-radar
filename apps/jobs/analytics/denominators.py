@@ -133,6 +133,23 @@ class DatabaseDenominatorRepository(DatabaseRepository):
         )
 
     def upsert_denominator(self, denominator: StatCanDenominator) -> None:
+        if denominator.payload.get("demand_source_status") == "live":
+            self.conn.execute(
+                """
+                DELETE FROM statcan_denominator
+                WHERE geo_code = %s
+                  AND metric = %s
+                  AND category IS NOT DISTINCT FROM %s
+                  AND id <> %s
+                  AND COALESCE(payload->>'demand_source_status', '') <> 'live'
+                """,
+                (
+                    denominator.geo_code,
+                    denominator.metric,
+                    denominator.category,
+                    denominator.id,
+                ),
+            )
         self.conn.execute(
             """
             INSERT INTO statcan_denominator (

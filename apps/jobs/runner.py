@@ -1517,6 +1517,7 @@ def main() -> None:
             "ai_enrichment",
             "entity_resolution",
             "statcan_denominators",
+            "neighborhood_assignment",
             "opportunity_analytics",
             "proposition_synthesis",
             "peer_city_trends",
@@ -1557,6 +1558,11 @@ def main() -> None:
         from apps.jobs.analytics.denominators import run_statcan_denominators
 
         print(_metrics_dict(run_statcan_denominators()))
+        return
+    if args.adapter == "neighborhood_assignment":
+        from apps.jobs.analytics.neighborhoods import run_neighborhood_assignment
+
+        print(_metrics_dict(run_neighborhood_assignment()))
         return
     if args.adapter == "opportunity_analytics":
         from apps.jobs.analytics.opportunity import run_opportunity_analytics
@@ -1661,6 +1667,7 @@ def run_m3_sequence() -> dict[str, Any]:
     from apps.jobs.analytics.entity_resolution import run_entity_resolution
     from apps.jobs.analytics.graph import run_graph_build
     from apps.jobs.analytics.influence import run_influence_scoring
+    from apps.jobs.analytics.neighborhoods import run_neighborhood_assignment
     from apps.jobs.analytics.opportunity import run_opportunity_analytics
     from apps.jobs.analytics.propositions import run_proposition_synthesis
     from apps.jobs.analytics.trends import run_peer_city_trends
@@ -1668,6 +1675,7 @@ def run_m3_sequence() -> dict[str, Any]:
     results: dict[str, Any] = {}
     results["entity_resolution"] = _run_safely(run_entity_resolution)
     results["statcan_denominators"] = _run_safely(run_statcan_denominators)
+    results["neighborhood_assignment"] = _run_safely(run_neighborhood_assignment)
     results["opportunity_analytics"] = _run_safely(run_opportunity_analytics)
     results["proposition_synthesis"] = _run_safely(run_proposition_synthesis)
     results["peer_city_trends"] = _run_safely(run_peer_city_trends)

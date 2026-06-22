@@ -18,6 +18,9 @@ class OperatorItem(BaseModel):
     address: str | None
     municipality: str | None
     neighborhood: str | None
+    neighborhood_assignment_method: str | None = None
+    neighborhood_assignment_source: str | None = None
+    neighborhood_assignment_confidence: float | None = None
     lat: float
     lng: float
     confidence_score: float

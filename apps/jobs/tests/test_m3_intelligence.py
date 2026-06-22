@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import csv
+import io
+import zipfile
 from datetime import datetime, timezone
 
-from apps.jobs.adapters.statcan_wds import StatCanWdsAdapter
+from apps.jobs.adapters.statcan_wds import (
+    CATEGORY_BUSINESS_NAICS,
+    LIVE_GEOGRAPHIES,
+    StatCanWdsAdapter,
+)
 from apps.jobs.analytics.denominators import (
     InMemoryDenominatorRepository,
     run_statcan_denominators,
@@ -45,6 +52,33 @@ def test_statcan_denominator_adapter_uses_fixture_and_bc_gate() -> None:
         denominator.payload["demand_source_status"] == "fixture"
         for denominator in repository.denominators.values()
     )
+
+
+def test_statcan_denominator_adapter_fetches_live_profile_and_business_counts(
+    tmp_path,
+) -> None:
+    adapter = StatCanWdsAdapter(mode="live", client=FakeStatCanClient(), cache_dir=tmp_path)
+
+    records = adapter.fetch()
+
+    vancouver = next(record for record in records if record["geo_code"] == "5915022")
+    assert vancouver["demand_source_status"] == "live"
+    assert vancouver["live_attempted"] is True
+    population = next(
+        denominator
+        for denominator in vancouver["denominators"]
+        if denominator["metric"] == "population"
+    )
+    recovery = next(
+        denominator
+        for denominator in vancouver["denominators"]
+        if denominator.get("category") == "recovery_contrast_therapy"
+    )
+    assert population["value"] == 662248.0
+    assert recovery["value"] == 650.0
+    assert recovery["naics_code"] == "8121"
+    assert recovery["source_vector"] == "v-5915022-8121"
+    assert recovery["source_refs"][0]["source_name"] == "statcan_business_counts"
 
 
 def test_proposition_template_exposes_raw_demand_and_sources() -> None:
@@ -247,3 +281,94 @@ def test_influence_components_use_public_professional_fields_only() -> None:
     assert components.locality_multiplier > 1
     assert components.final_score() > 0
     assert "Public professional role" in explanation
+
+
+class FakeStatCanClient:
+    def get_bytes(self, url: str, *, accept: str) -> bytes:
+        if "profile/sdmx/rest/data" in url:
+            return _profile_csv(url).encode("utf-8")
+        if "33101016-eng.zip" in url:
+            return _business_counts_zip()
+        raise AssertionError(f"unexpected StatCan URL {url} with {accept}")
+
+
+def _profile_csv(url: str) -> str:
+    rows = []
+    for geography in LIVE_GEOGRAPHIES:
+        if geography.census_profile_flow not in url:
+            continue
+        value = 662248 if geography.geo_code == "5915022" else 100000
+        rows.append(
+            {
+                "DATAFLOW": f"STC_CP:{geography.census_profile_flow}(1.3)",
+                "FREQ": "A5",
+                "TIME_PERIOD": "2021",
+                "REF_AREA": geography.dguid,
+                "GENDER": "1",
+                "CHARACTERISTIC": "1",
+                "STATISTIC": "1",
+                "OBS_VALUE": str(value),
+                "DECIMALS": "0",
+                "ALT_GEO_CODE": geography.geo_code,
+            }
+        )
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=list(rows[0]))
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue()
+
+
+def _business_counts_zip() -> bytes:
+    unique_codes = {
+        str(config["code"]): str(config["label"])
+        for config in CATEGORY_BUSINESS_NAICS.values()
+    }
+    output = io.StringIO()
+    fieldnames = [
+        "REF_DATE",
+        "GEO",
+        "DGUID",
+        "Employment size",
+        "North American Industry Classification System (NAICS)",
+        "UOM",
+        "UOM_ID",
+        "SCALAR_FACTOR",
+        "SCALAR_ID",
+        "VECTOR",
+        "COORDINATE",
+        "VALUE",
+        "STATUS",
+        "SYMBOL",
+        "TERMINATED",
+        "DECIMALS",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for geo_index, geography in enumerate(LIVE_GEOGRAPHIES, start=1):
+        for code_index, (code, label) in enumerate(unique_codes.items(), start=1):
+            value = 650 if geography.geo_code == "5915022" and code == "8121" else 25
+            writer.writerow(
+                {
+                    "REF_DATE": "2025-01",
+                    "GEO": geography.geo_name,
+                    "DGUID": geography.dguid,
+                    "Employment size": "Total, with employees",
+                    "North American Industry Classification System (NAICS)": f"{label} [{code}]",
+                    "UOM": "Number",
+                    "UOM_ID": "223",
+                    "SCALAR_FACTOR": "units",
+                    "SCALAR_ID": "0",
+                    "VECTOR": f"v-{geography.geo_code}-{code}",
+                    "COORDINATE": f"{geo_index}.1.{code_index}",
+                    "VALUE": str(value),
+                    "STATUS": "",
+                    "SYMBOL": "",
+                    "TERMINATED": "",
+                    "DECIMALS": "0",
+                }
+            )
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("33101016.csv", output.getvalue())
+    return zip_buffer.getvalue()

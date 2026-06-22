@@ -35,6 +35,13 @@ def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
         "contacts": row.get("contacts") or [],
         "organization_id": row.get("organization_id"),
         "orgbook_id": row.get("orgbook_id"),
+        "neighborhood_assignment_method": row.get("neighborhood_assignment_method"),
+        "neighborhood_assignment_source": row.get("neighborhood_assignment_source"),
+        "neighborhood_assignment_confidence": (
+            float(row["neighborhood_assignment_confidence"])
+            if row.get("neighborhood_assignment_confidence") is not None
+            else None
+        ),
         "confidence_score": float(row["confidence_score"]),
         "source_refs": row["source_refs"],
         "freshness_at": iso_or_none(row.get("last_seen_at")),
@@ -88,6 +95,9 @@ def list_operators(
         op.social_links,
         op.organization_id,
         op.orgbook_id,
+        op.neighborhood_assignment_method,
+        op.neighborhood_assignment_source,
+        op.neighborhood_assignment_confidence,
         ST_Y(op.geom::geometry) AS lat,
         ST_X(op.geom::geometry) AS lng,
         op.confidence_score,
@@ -166,6 +176,9 @@ def get_operator(operator_id: str) -> dict[str, Any]:
                   op.social_links,
                   op.organization_id,
                   op.orgbook_id,
+                  op.neighborhood_assignment_method,
+                  op.neighborhood_assignment_source,
+                  op.neighborhood_assignment_confidence,
                   ST_Y(op.geom::geometry) AS lat,
                   ST_X(op.geom::geometry) AS lng,
                   op.confidence_score,
@@ -280,6 +293,9 @@ def list_leads(
                   op.social_links,
                   op.organization_id,
                   op.orgbook_id,
+                  op.neighborhood_assignment_method,
+                  op.neighborhood_assignment_source,
+                  op.neighborhood_assignment_confidence,
                   ST_Y(op.geom::geometry) AS lat,
                   ST_X(op.geom::geometry) AS lng,
                   op.confidence_score,
