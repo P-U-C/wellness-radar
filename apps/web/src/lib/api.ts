@@ -450,7 +450,7 @@ export async function fetchPropositions(
 ): Promise<OpportunityProposition[]> {
   const params = new URLSearchParams({ category, geo_level: geoLevel });
   const data = await getJson<{ items: OpportunityProposition[] }>(
-    `/api/propositions?${params.toString()}`
+    `/propositions?${params.toString()}`
   );
   return data?.items ?? [];
 }

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query
 from apps.api.app.db.connection import get_connection
 from apps.api.app.services.freshness import age_hours
 
-router = APIRouter(prefix="/api/propositions", tags=["propositions"])
+router = APIRouter(prefix="/propositions", tags=["propositions"])
 
 
 @router.get("")
