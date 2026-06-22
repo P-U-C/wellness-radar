@@ -1869,6 +1869,34 @@ select:focus-visible {
   font-weight: 600;
 }
 
+.wr-opportunity-geo-level {
+  position: absolute;
+  left: 16px;
+  top: 106px;
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--wr-line-2);
+  border-radius: 8px;
+  background: rgba(15,22,34,.86);
+  backdrop-filter: blur(8px);
+}
+
+.wr-opportunity-geo-level button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--wr-muted);
+  cursor: pointer;
+  font: 600 11px/1 var(--wr-font-ui);
+}
+
+.wr-opportunity-geo-level button.is-active {
+  background: var(--wr-text);
+  color: var(--wr-bg);
+}
+
 .wr-opportunity-callout {
   position: absolute;
   left: 54%;
@@ -1990,6 +2018,93 @@ select:focus-visible {
   flex-direction: column;
   gap: 11px;
   padding: 14px 16px;
+}
+
+.wr-proposition-stack {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 3px;
+}
+
+.wr-proposition-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--wr-opportunity-border);
+  border-radius: 8px;
+  background: var(--wr-opportunity-soft);
+}
+
+.wr-proposition-card header,
+.wr-proposition-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wr-proposition-card header strong {
+  min-width: 0;
+  color: var(--wr-text);
+  font: 700 13px/1.25 var(--wr-font-ui);
+}
+
+.wr-proposition-card header b {
+  color: var(--wr-opportunity);
+  font: 700 13px/1 var(--wr-font-mono);
+}
+
+.wr-proposition-card p {
+  margin: 0;
+  color: var(--wr-text-dim);
+  font: 400 11px/1.5 var(--wr-font-ui);
+}
+
+.wr-proposition-evidence {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wr-proposition-evidence span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--wr-line-2);
+  border-radius: 7px;
+  background: rgba(15,22,34,.55);
+  color: var(--wr-faint);
+  font: 700 9px/1 var(--wr-font-mono);
+  text-transform: uppercase;
+}
+
+.wr-proposition-evidence strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wr-text);
+  font: 700 11px/1.2 var(--wr-font-ui);
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.wr-proposition-signals {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wr-proposition-signals li {
+  color: var(--wr-muted);
+  font: 400 10px/1.4 var(--wr-font-mono);
+}
+
+.wr-proposition-card footer > span {
+  color: var(--wr-muted);
+  font: 600 10px/1 var(--wr-font-mono);
 }
 
 .wr-opportunity-method {
@@ -4166,6 +4281,10 @@ a {
     border-top: 1px solid var(--wr-line);
   }
 
+  .wr-opportunity-geo-level {
+    top: 116px;
+  }
+
   .wr-people-screen {
     min-height: 1040px;
     grid-template-columns: 1fr;
@@ -4227,6 +4346,18 @@ a {
   .wr-signals-stream-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .wr-opportunity-categories {
+    right: 16px;
+  }
+
+  .wr-opportunity-geo-level {
+    top: 142px;
+  }
+
+  .wr-proposition-evidence {
+    grid-template-columns: 1fr;
   }
 
   .wr-signals-stream-body,
