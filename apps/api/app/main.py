@@ -13,6 +13,7 @@ from apps.api.app.routers import (
     admin,
     analytics,
     brief,
+    bundles,
     graph,
     health,
     metrics,
@@ -70,6 +71,7 @@ app.include_router(health.router)
 app.include_router(operators.router)
 app.include_router(signals.router)
 app.include_router(people.router)
+app.include_router(bundles.router)
 app.include_router(analytics.router)
 app.include_router(brief.router)
 app.include_router(propositions.router)
