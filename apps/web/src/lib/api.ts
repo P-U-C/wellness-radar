@@ -9,6 +9,7 @@ export type SourceRef = {
 
 export type ContactMethod = {
   type: "phone" | "email" | "website" | "social";
+  contact_type?: "phone" | "email" | "website" | "social";
   value: string;
   platform?: string | null;
   source_ref: SourceRef;
@@ -107,6 +108,9 @@ export type Person = {
   primary_role: string | null;
   primary_affiliation: string | null;
   affiliation_role: string | null;
+  contacts?: ContactMethod[];
+  contactable?: boolean;
+  person_type?: "operator" | "policy_figure" | "public_professional";
   influence_score: number | null;
   influence_components?: Record<string, number | string> | null;
   influence_explanation?: string | null;
@@ -175,11 +179,33 @@ export type OpportunityProposition = {
   population: number | null;
   business_count: number | null;
   demand_source: string;
+  thesis?: string;
+  market_sizing_line?: string | null;
+  spend_proxy_label?: string | null;
+  spend_proxy_value?: number | null;
+  nearest_competitors?: Array<{
+    operator_id: string;
+    name: string;
+    distance_km: number | null;
+    municipality?: string | null;
+    neighborhood?: string | null;
+    source_refs: SourceRef[];
+  }>;
+  confidence_narrative?: string | null;
   supporting_signals: Array<{
     kind: string;
     label: string;
     raw_value: number | string | null;
     radius_km?: number;
+    competitors?: Array<{
+      operator_id: string;
+      name: string;
+      distance_km: number | null;
+      municipality?: string | null;
+      neighborhood?: string | null;
+      source_refs: SourceRef[];
+    }>;
+    proxy_value_per_person?: number;
     source_refs: SourceRef[];
   }>;
   component_breakdown: Record<string, unknown>;

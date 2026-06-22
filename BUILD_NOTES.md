@@ -826,3 +826,210 @@ curl -s -H 'Authorization: Bearer local-analyst-token' http://127.0.0.1:8000/adm
 - Configure real deployment secrets, external alert dispatch, monitoring sinks, and incident ownership outside the repo.
 - Assign a public correction workflow owner and SLA before exposing people scoring publicly.
 - Decide whether production uses the in-repo scheduler loop or an external orchestrator for daily brief and ingest cadence ownership.
+
+## CM4 Close-Out - Brief Fire, Written Propositions, Coverage
+
+### Summary
+
+- Daily briefs are now idempotent per calendar day. Today's brief regenerates in place, compares against the latest prior-day brief, and always covers at least 24 hours even when a brief was generated minutes ago.
+- Clean runs backfill recent brief history from existing source/operator/signal/proposition timestamps. `GET /api/brief/{date}` returns persisted historical briefs, and `GET /api/brief/recent?limit=N` plus `GET /api/brief?limit=N` list recent briefs.
+- Opportunity propositions now run across all lead-wedge categories present in the data, not only `recovery_contrast_therapy`, and include written thesis fields, market sizing, named nearest competitors, source refs, and confidence narratives.
+- Leads are joinable to neighborhoods, lead contacts serialize `contact_type`, public leads CSV export works through `Accept: text/csv` or `?format=csv`, and `/people?limit=500` clamps instead of returning 400.
+- People records now expose `contacts: []`, `contactable: false` when no public direct contact is present, and `person_type` values such as `policy_figure`, `operator`, and `public_professional`.
+
+### Clean DB Verification
+
+Clean database: `wellness_radar_cm4_clean`
+
+Commands:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm4_clean python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm4_clean WR_STATCAN_WDS_MODE=fixture python3 -m apps.jobs.runner cm3 --limit 20
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm4_clean uvicorn apps.api.app.main:app --host 127.0.0.1 --port 8014
+```
+
+Migration applied through `010_cm4_brief_proposition_exports.sql`.
+
+Runner result highlights:
+
+- `daily_brief`: `status=initial_snapshot`, `top_actions=3`, `window_hours=72.0`, `minimum_window_hours=24`, `top_propositions=8`, `changed_operators=8`, `new_signals=8`, `new_reachable_leads=8`.
+- Backfilled history: `2026-06-17`, `2026-06-19`, `2026-06-22`.
+- Proposition synthesis: 41 written propositions persisted from 41 opportunity score snapshots.
+
+### Populated Brief Proof
+
+Endpoint: `GET /api/brief`
+
+```json
+{
+  "brief_date": "2026-06-22",
+  "status": "initial_snapshot",
+  "window_start": "2026-06-19T19:48:50.678344+00:00",
+  "window_end": "2026-06-22T19:48:50.678344+00:00",
+  "counts": {
+    "new_signals": 8,
+    "top_actions": 3,
+    "window_hours": 72.0,
+    "had_prior_brief": true,
+    "top_propositions": 8,
+    "changed_operators": 8,
+    "new_reachable_leads": 8,
+    "minimum_window_hours": 24,
+    "opportunity_movement": 0,
+    "had_prior_opportunity_snapshot": false
+  }
+}
+```
+
+Real populated top actions:
+
+1. `Evaluate proposition: Edmonds: source-backed spa and thermal whitespace`
+   - Market sizing proxy: 249,125 people x $215 per-person StatCan personal care service household spend proxy = $53.5M broad annual addressable spend.
+   - Named competitors within 4 km: Art of Sauna, Queens Park Massage Therapy.
+   - Confidence narrative: confidence 0.36; base score confidence 0.67; demand denominator is fixture-backed; neighborhood values are allocated from parent CSD denominators; spend proxy is broad; 2 named/countable competitor inputs.
+   - Source refs include StatCan WDS/profile, StatCan personal care spend, BC average household size, Art of Sauna, and OSM node 961847328.
+2. `Evaluate proposition: Edmonds: source-backed recovery and contrast therapy whitespace`
+   - Market sizing proxy: 249,125 people x $2,180 per-person StatCan 2023 recreation household spend proxy = $543.0M broad annual addressable spend.
+   - Named competitor within 4 km: Art of Sauna.
+   - Confidence narrative: confidence 0.40; base score confidence 0.68; fixture-backed denominator; allocated neighborhood values; broad StatCan recreation proxy; 1 named/countable competitor input.
+   - Source refs include StatCan WDS/profile, StatCan 2023 household recreation spend, BC average household size, and Art of Sauna.
+3. `Evaluate proposition: Downtown: source-backed spa and thermal whitespace`
+   - Market sizing proxy: 165,562 people x $215 per-person StatCan personal care service household spend proxy = $35.5M broad annual addressable spend.
+   - Named competitors within 4 km: Ritual Urban Retreat, Vancouver Chiropractor, Massage therapy clinic, Davie Registered Massage Therapy Corner, Fairmont Pacific Rim Spa, AetherHaus.
+   - Confidence narrative: confidence 0.32; base score confidence 0.60; fixture-backed denominator; allocated neighborhood values; broad StatCan personal care service proxy; 5 named/countable competitor inputs.
+
+Brief history endpoint: `GET /api/brief/recent?limit=5`
+
+```json
+[
+  {"brief_date": "2026-06-22", "status": "initial_snapshot", "top_actions": 3, "window_hours": 72.0},
+  {"brief_date": "2026-06-19", "status": "initial_snapshot", "top_actions": 0, "window_hours": 72.0},
+  {"brief_date": "2026-06-17", "status": "initial_snapshot", "top_actions": 0, "window_hours": 72.0}
+]
+```
+
+Direct date checks:
+
+- `GET /api/brief/2026-06-22`: 200, `top_actions=3`.
+- `GET /api/brief/2026-06-19`: 200, `top_actions=0`.
+- `GET /api/brief/2026-06-17`: 200, `top_actions=0`.
+
+### Proposition Examples
+
+Endpoint: `GET /api/propositions?geo_level=neighborhood&limit=25`
+
+Example 1 - `spa_thermal`, Edmonds:
+
+```json
+{
+  "headline": "Edmonds: source-backed spa and thermal whitespace",
+  "market_sizing_line": "Market sizing proxy: 249,125 people x $215 per-person statcan personal care service household spend proxy = $53.5M broad annual addressable spend.",
+  "nearest_competitors": ["Art of Sauna", "Queens Park Massage Therapy"],
+  "confidence": 0.3594,
+  "confidence_narrative": "Confidence 0.36: base score confidence 0.67; demand denominator is fixture-backed; neighborhood values are allocated from parent CSD denominators; spend proxy is broad (StatCan personal care service household spend proxy); 2 named/countable competitor input(s)."
+}
+```
+
+Example 2 - `allied_health`, Mount Pleasant:
+
+```json
+{
+  "headline": "Mount Pleasant: source-backed allied health whitespace",
+  "market_sizing_line": "Market sizing proxy: 118,259 people x $1,243 per-person cihi out-of-pocket health expenditure per capita proxy = $147.0M broad annual addressable spend.",
+  "nearest_competitors": [
+    "(Matthew Johnston)",
+    "Cedar Pregnancy Care Centre of Vancouver",
+    "(Elli Klaus)",
+    "(Emma Gerrard)",
+    "Ocean Orthodontics",
+    "Tall Tee Integrated Health Centre"
+  ],
+  "confidence": 0.3249,
+  "confidence_narrative": "Confidence 0.32: base score confidence 0.63; demand denominator is fixture-backed; neighborhood values are allocated from parent CSD denominators; spend proxy is broad (CIHI out-of-pocket health expenditure per capita proxy); 13 named/countable competitor input(s)."
+}
+```
+
+Spend proxy source refs used by proposition records:
+
+- StatCan 2023 Survey of Household Spending recreation proxy: `https://www150.statcan.gc.ca/n1/daily-quotidien/250521/dq250521a-eng.htm`
+- StatCan personal care service household spend proxy: `https://www.statcan.gc.ca/o1/en/plus/5228-getting-ready-go-out`
+- BC average household size conversion: `https://www12.statcan.gc.ca/census-recensement/2021/as-sa/fogs-spg/alternative.cfm?dguid=2021A000259&lang=e&objectId=2&topic=3`
+- CIHI out-of-pocket health expenditure proxy: `https://www.cihi.ca/sites/default/files/document/health-expenditure-data-in-brief-2024-en.pdf`
+
+Fixture-backed and allocated demand values remain explicitly labeled and confidence-reduced.
+
+### Leads, Export, People Proof
+
+Endpoint: `GET /leads?limit=3`
+
+```json
+[
+  {
+    "name": "Fitness Town",
+    "neighborhood": "Riley Park",
+    "contacts": [
+      {"contact_type": "phone", "value": "+1-604-322-5988"},
+      {"contact_type": "website", "value": "https://fitnesstown.ca/locations-south-vancouver/"}
+    ]
+  },
+  {
+    "name": "Vancouver Chiropractor, Massage therapy clinic",
+    "neighborhood": "Downtown",
+    "contacts": [
+      {"contact_type": "phone", "value": "+1-604-688-0724"},
+      {"contact_type": "website", "value": "http://www.KilianChiropractic.com"}
+    ]
+  },
+  {
+    "name": "Interurban Chiropractic",
+    "neighborhood": "Edmonds",
+    "contacts": [
+      {"contact_type": "phone", "value": "+1-604-553-1550"},
+      {"contact_type": "website", "value": "https://interurbanchiropractic.ca/"}
+    ]
+  }
+]
+```
+
+Endpoint: `Accept: text/csv GET /leads?limit=2`
+
+```csv
+operator_id,operator_name,categories,status,address,municipality,neighborhood,contact_type,contact_value,contact_platform,contact_confidence,contact_source_name,contact_source_url,contact_source_record_id,opportunity_geo_name,opportunity_score,source_refs
+op_osm_overpass_node_1686653483,Fitness Town,"[""fitness_movement""]",open,"1306, Southeast Marine Drive, BC",,Riley Park,phone,+1-604-322-5988,,0.76,osm_overpass,https://www.openstreetmap.org/node/1686653483,node/1686653483,Vancouver,0.9415,"[{""licence"": ""Open Database License"", ""seen_at"": ""2026-06-22T19:48:43.499595Z"", ""source_name"": ""osm_overpass"", ""source_record_id"": ""node/1686653483"", ""trust_tier"": ""community"", ""url"": ""https://www.openstreetmap.org/node/1686653483""}]"
+```
+
+Endpoint: `GET /people?limit=500`
+
+```json
+{
+  "meta": {"count": 20, "limit": 250, "requested_limit": 500, "max_limit": 250},
+  "first": {
+    "name": "Dr. Bonnie Henry",
+    "person_type": "policy_figure",
+    "contactable": false,
+    "contacts": []
+  }
+}
+```
+
+### CM4 Commands Run
+
+```bash
+python3 -m pytest -q
+python3 -m ruff check .
+python3 -m mypy apps packages db
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Results:
+
+- Python tests: 64 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web lint/typecheck: passed.
+- Web unit tests: 9 passed.
+- Web build: passed; Vite still reports the existing large chunk warning.

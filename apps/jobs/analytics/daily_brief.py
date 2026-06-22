@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Protocol, cast
 
 import httpx
@@ -16,6 +16,8 @@ from packages.shared.ids import stable_id
 
 BRIEF_CONDITION = "daily_market_brief"
 DEFAULT_WINDOW_HOURS = 72
+DEFAULT_MIN_WINDOW_HOURS = 24
+DEFAULT_HISTORY_DAYS = 3
 DEFAULT_MOVEMENT_THRESHOLD = 0.05
 DEFAULT_MAX_SECTION_ITEMS = 8
 DETERMINISTIC_NARRATIVE_MODEL = "deterministic-template-v1"
@@ -162,30 +164,42 @@ def generate_daily_brief(
     *,
     database_url: str | None = None,
     brief_date: date | None = None,
+    generated_at: datetime | None = None,
     window_hours: int | None = None,
     movement_threshold: float | None = None,
     max_section_items: int = DEFAULT_MAX_SECTION_ITEMS,
     narrative_builder: BriefNarrativeBuilder | None = None,
 ) -> BriefGenerationResult:
-    active_date = brief_date or datetime.now(timezone.utc).date()
+    now = datetime.now(timezone.utc)
+    active_date = brief_date or now.date()
     active_window_hours = window_hours or _env_int("WR_BRIEF_WINDOW_HOURS", DEFAULT_WINDOW_HOURS)
     active_threshold = movement_threshold or _env_float(
         "WR_BRIEF_MOVEMENT_THRESHOLD",
         DEFAULT_MOVEMENT_THRESHOLD,
     )
-    window_end = datetime.now(timezone.utc)
+    window_end = _brief_window_end(active_date, generated_at=generated_at, now=now)
 
     with psycopg.connect(database_url or settings.database_url, row_factory=dict_row) as conn:
-        previous_brief = _latest_brief(conn)
-        window_start = (
-            _ensure_aware(cast(datetime, previous_brief["generated_at"]))
-            if previous_brief
-            else window_end - timedelta(hours=active_window_hours)
+        previous_brief = _latest_prior_brief(conn, active_date)
+        window_start = _window_start(
+            previous_brief,
+            window_end=window_end,
+            configured_hours=active_window_hours,
         )
-        had_score_snapshot = _has_score_snapshot(conn)
+        had_score_snapshot = _has_prior_score_snapshot(conn, active_date)
         sections = {
-            "changed_operators": _changed_operators(conn, window_start, max_section_items),
-            "new_signals": _new_high_trust_signals(conn, window_start, max_section_items),
+            "changed_operators": _changed_operators(
+                conn,
+                window_start,
+                window_end,
+                max_section_items,
+            ),
+            "new_signals": _new_high_trust_signals(
+                conn,
+                window_start,
+                window_end,
+                max_section_items,
+            ),
             "opportunity_movement": _opportunity_movement(
                 conn,
                 active_date,
@@ -194,10 +208,15 @@ def generate_daily_brief(
                 threshold=active_threshold,
                 limit=max_section_items,
             ),
-            "new_reachable_leads": _new_reachable_leads(conn, window_start, max_section_items),
+            "new_reachable_leads": _new_reachable_leads(
+                conn,
+                window_start,
+                window_end,
+                max_section_items,
+            ),
         }
         _assert_source_backed_sections(sections)
-        top_propositions = _top_propositions(conn, max_section_items)
+        top_propositions = _top_propositions(conn, max_section_items, window_end=window_end)
         top_actions = _top_actions(sections, top_propositions=top_propositions)
         _assert_source_backed_actions(top_actions)
         counts = {
@@ -210,6 +229,7 @@ def generate_daily_brief(
             "window_hours": round((window_end - window_start).total_seconds() / 3600, 3),
             "had_prior_brief": previous_brief is not None,
             "had_prior_opportunity_snapshot": had_score_snapshot,
+            "minimum_window_hours": DEFAULT_MIN_WINDOW_HOURS,
         }
         status = _brief_status(counts, had_score_snapshot)
         source_refs = _dedupe_refs(
@@ -260,9 +280,56 @@ def generate_daily_brief(
             narrative_model=narrative_model,
         )
         _persist_brief(conn, result)
-        _snapshot_current_scores(conn, active_date)
+        _snapshot_current_scores(conn, active_date, captured_at=window_end)
         conn.commit()
         return result
+
+
+def backfill_daily_brief_history(
+    *,
+    database_url: str | None = None,
+    days: int = DEFAULT_HISTORY_DAYS,
+    window_hours: int | None = None,
+    max_section_items: int = DEFAULT_MAX_SECTION_ITEMS,
+    narrative_builder: BriefNarrativeBuilder | None = None,
+) -> list[BriefGenerationResult]:
+    """Generate a short calendar history without inventing source-backed items.
+
+    Candidate dates come from persisted source/operator/signal/proposition timestamps. If the
+    corpus only has today, prior calendar days are still persisted as honest no-change briefs so
+    `/api/brief/{date}` can return a historical record without synthetic section items.
+    """
+
+    if days <= 0:
+        return []
+    today = datetime.now(timezone.utc).date()
+    with psycopg.connect(database_url or settings.database_url, row_factory=dict_row) as conn:
+        observed_dates = _observed_material_dates(conn, limit=max(days, 1))
+    dates: list[date] = []
+    for observed_date in observed_dates:
+        if observed_date <= today and observed_date not in dates:
+            dates.append(observed_date)
+    if today not in dates:
+        dates.append(today)
+    cursor = today - timedelta(days=1)
+    while len(dates) < days:
+        if cursor not in dates:
+            dates.append(cursor)
+        cursor -= timedelta(days=1)
+    ordered_dates = sorted(sorted(set(dates), reverse=True)[:days])
+    results: list[BriefGenerationResult] = []
+    for target_date in ordered_dates:
+        results.append(
+            generate_daily_brief(
+                database_url=database_url,
+                brief_date=target_date,
+                generated_at=_brief_window_end(target_date),
+                window_hours=window_hours,
+                max_section_items=max_section_items,
+                narrative_builder=narrative_builder,
+            )
+        )
+    return results
 
 
 def build_deterministic_brief_text(brief_payload: dict[str, Any]) -> str:
@@ -318,28 +385,40 @@ def build_deterministic_brief_text(brief_payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _latest_brief(conn: Any) -> dict[str, Any] | None:
+def _latest_prior_brief(conn: Any, active_date: date) -> dict[str, Any] | None:
     return cast(
         dict[str, Any] | None,
         conn.execute(
             """
             SELECT id, generated_at
             FROM daily_brief
+            WHERE brief_date < %s
             ORDER BY generated_at DESC
             LIMIT 1
-            """
+            """,
+            (active_date,),
         ).fetchone(),
     )
 
 
-def _has_score_snapshot(conn: Any) -> bool:
+def _has_prior_score_snapshot(conn: Any, active_date: date) -> bool:
     row = conn.execute(
-        "SELECT EXISTS (SELECT 1 FROM opportunity_score_snapshot) AS has_rows"
+        """
+        SELECT EXISTS (
+          SELECT 1 FROM opportunity_score_snapshot WHERE brief_date < %s
+        ) AS has_rows
+        """,
+        (active_date,),
     ).fetchone()
     return bool(row["has_rows"])
 
 
-def _changed_operators(conn: Any, window_start: datetime, limit: int) -> list[dict[str, Any]]:
+def _changed_operators(
+    conn: Any,
+    window_start: datetime,
+    window_end: datetime,
+    limit: int,
+) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT
@@ -358,8 +437,12 @@ def _changed_operators(conn: Any, window_start: datetime, limit: int) -> list[di
         FROM "operator"
         WHERE jsonb_array_length(source_refs) > 0
           AND (
-            first_seen_at >= %s
-            OR (status = 'planned'::operator_status AND last_seen_at >= %s)
+            (first_seen_at >= %s AND first_seen_at <= %s)
+            OR (
+              status = 'planned'::operator_status
+              AND last_seen_at >= %s
+              AND last_seen_at <= %s
+            )
           )
           AND (categories && %s::text[] OR status = 'planned'::operator_status)
         ORDER BY
@@ -369,7 +452,14 @@ def _changed_operators(conn: Any, window_start: datetime, limit: int) -> list[di
           name ASC
         LIMIT %s
         """,
-        (window_start, window_start, LEAD_WEDGE_CATEGORIES, limit),
+        (
+            window_start,
+            window_end,
+            window_start,
+            window_end,
+            LEAD_WEDGE_CATEGORIES,
+            limit,
+        ),
     ).fetchall()
     items = []
     for row in rows:
@@ -412,6 +502,7 @@ def _changed_operators(conn: Any, window_start: datetime, limit: int) -> list[di
 def _new_high_trust_signals(
     conn: Any,
     window_start: datetime,
+    window_end: datetime,
     limit: int,
 ) -> list[dict[str, Any]]:
     rows = conn.execute(
@@ -433,6 +524,7 @@ def _new_high_trust_signals(
         FROM signal
         WHERE jsonb_array_length(source_refs) > 0
           AND ingested_at >= %s
+          AND ingested_at <= %s
           AND (
             severity = 'high'::signal_severity
             OR trust_tier IN ('official', 'reputable_press')
@@ -444,7 +536,7 @@ def _new_high_trust_signals(
           ingested_at DESC
         LIMIT %s
         """,
-        (window_start, limit),
+        (window_start, window_end, limit),
     ).fetchall()
     items = []
     for row in rows:
@@ -491,7 +583,8 @@ def _opportunity_movement(
             opportunity_score AS previous_score,
             captured_at AS previous_captured_at
           FROM opportunity_score_snapshot
-          WHERE captured_at < %s
+          WHERE brief_date < %s
+            AND captured_at < %s
           ORDER BY scorecard_id, captured_at DESC
         ),
         ranked AS (
@@ -513,6 +606,7 @@ def _opportunity_movement(
           FROM opportunity_scorecard sc
           LEFT JOIN previous ON previous.scorecard_id = sc.id
           WHERE jsonb_array_length(sc.source_refs) > 0
+            AND sc.generated_at <= %s
         )
         SELECT *
         FROM ranked
@@ -528,7 +622,7 @@ def _opportunity_movement(
           geo_name ASC
         LIMIT %s
         """,
-        (window_end, threshold, limit),
+        (brief_date, window_end, window_end, threshold, limit),
     ).fetchall()
     items = []
     for row in rows:
@@ -570,7 +664,12 @@ def _opportunity_movement(
     return items
 
 
-def _new_reachable_leads(conn: Any, window_start: datetime, limit: int) -> list[dict[str, Any]]:
+def _new_reachable_leads(
+    conn: Any,
+    window_start: datetime,
+    window_end: datetime,
+    limit: int,
+) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT
@@ -590,6 +689,7 @@ def _new_reachable_leads(conn: Any, window_start: datetime, limit: int) -> list[
         FROM operator_contact oc
         JOIN "operator" op ON op.id = oc.operator_id
         WHERE oc.first_seen_at >= %s
+          AND oc.first_seen_at <= %s
           AND jsonb_array_length(op.source_refs) > 0
           AND oc.source_ref ? 'source_name'
         GROUP BY
@@ -608,7 +708,7 @@ def _new_reachable_leads(conn: Any, window_start: datetime, limit: int) -> list[
           op.name ASC
         LIMIT %s
         """,
-        (window_start, limit),
+        (window_start, window_end, limit),
     ).fetchall()
     items = []
     for row in rows:
@@ -646,7 +746,12 @@ def _new_reachable_leads(conn: Any, window_start: datetime, limit: int) -> list[
     return items
 
 
-def _top_propositions(conn: Any, limit: int) -> list[dict[str, Any]]:
+def _top_propositions(
+    conn: Any,
+    limit: int,
+    *,
+    window_end: datetime,
+) -> list[dict[str, Any]]:
     table_row = conn.execute(
         "SELECT to_regclass('opportunity_proposition') AS relation_name"
     ).fetchone()
@@ -667,12 +772,16 @@ def _top_propositions(conn: Any, limit: int) -> list[dict[str, Any]]:
           population,
           business_count,
           demand_source,
+          market_sizing_line,
+          confidence_narrative,
+          nearest_competitors,
           opportunity_score,
           confidence_score,
           source_refs,
           generated_at
         FROM opportunity_proposition
         WHERE jsonb_array_length(source_refs) > 0
+          AND generated_at <= %s
         ORDER BY
           CASE WHEN geo_level = 'neighborhood' THEN 0 ELSE 1 END,
           opportunity_score DESC,
@@ -680,7 +789,7 @@ def _top_propositions(conn: Any, limit: int) -> list[dict[str, Any]]:
           geo_name ASC
         LIMIT %s
         """,
-        (limit,),
+        (window_end, limit),
     ).fetchall()
     return [
         {
@@ -700,6 +809,9 @@ def _top_propositions(conn: Any, limit: int) -> list[dict[str, Any]]:
                 float(row["business_count"]) if row["business_count"] is not None else None
             ),
             "demand_source": row["demand_source"],
+            "market_sizing_line": row.get("market_sizing_line"),
+            "confidence_narrative": row.get("confidence_narrative"),
+            "nearest_competitors": row.get("nearest_competitors") or [],
             "opportunity_score": float(row["opportunity_score"]),
             "generated_at": _iso(row["generated_at"]),
             "source_refs": _as_refs(row["source_refs"]),
@@ -872,7 +984,7 @@ def _persist_brief(conn: Any, result: BriefGenerationResult) -> None:
     )
 
 
-def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
+def _snapshot_current_scores(conn: Any, brief_date: date, *, captured_at: datetime) -> None:
     rows = conn.execute(
         """
         SELECT
@@ -887,7 +999,9 @@ def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
           calculation_method
         FROM opportunity_scorecard
         WHERE jsonb_array_length(source_refs) > 0
-        """
+          AND generated_at <= %s
+        """,
+        (captured_at,),
     ).fetchall()
     for row in rows:
         conn.execute(
@@ -906,7 +1020,7 @@ def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
               calculation_method,
               captured_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (brief_date, scorecard_id) DO UPDATE SET
               category = EXCLUDED.category,
               geo_code = EXCLUDED.geo_code,
@@ -916,7 +1030,7 @@ def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
               source_refs = EXCLUDED.source_refs,
               confidence_score = EXCLUDED.confidence_score,
               calculation_method = EXCLUDED.calculation_method,
-              captured_at = now()
+              captured_at = EXCLUDED.captured_at
             """,
             (
                 stable_id("opp_snapshot", brief_date.isoformat(), row["id"]),
@@ -930,6 +1044,7 @@ def _snapshot_current_scores(conn: Any, brief_date: date) -> None:
                 Jsonb(_as_refs(row["source_refs"])),
                 row["confidence_score"],
                 row["calculation_method"],
+                captured_at,
             ),
         )
 
@@ -940,10 +1055,84 @@ def _brief_status(counts: dict[str, Any], had_score_snapshot: bool) -> str:
         + int(counts["new_signals"])
         + int(counts["opportunity_movement"])
         + int(counts["new_reachable_leads"])
+        + int(counts.get("top_propositions") or 0)
     )
     if not had_score_snapshot:
         return "initial_snapshot"
     return "material_changes" if material_count else "no_material_changes"
+
+
+def _brief_window_end(
+    active_date: date,
+    *,
+    generated_at: datetime | None = None,
+    now: datetime | None = None,
+) -> datetime:
+    if generated_at is not None:
+        return _ensure_aware(generated_at)
+    active_now = now or datetime.now(timezone.utc)
+    if active_date == active_now.date():
+        return active_now
+    return datetime.combine(active_date, time(23, 59, 59), tzinfo=timezone.utc)
+
+
+def _window_start(
+    previous_brief: dict[str, Any] | None,
+    *,
+    window_end: datetime,
+    configured_hours: int,
+) -> datetime:
+    minimum_hours = max(configured_hours, DEFAULT_MIN_WINDOW_HOURS)
+    earliest_allowed = window_end - timedelta(hours=minimum_hours)
+    if not previous_brief:
+        return earliest_allowed
+    previous_generated_at = _ensure_aware(cast(datetime, previous_brief["generated_at"]))
+    if previous_generated_at >= window_end:
+        return earliest_allowed
+    return min(previous_generated_at, earliest_allowed)
+
+
+def _observed_material_dates(conn: Any, *, limit: int) -> list[date]:
+    rows = conn.execute(
+        """
+        WITH material_dates AS (
+          SELECT first_seen_at::date AS material_date
+          FROM "operator"
+          WHERE jsonb_array_length(source_refs) > 0
+          UNION
+          SELECT last_seen_at::date AS material_date
+          FROM "operator"
+          WHERE jsonb_array_length(source_refs) > 0
+          UNION
+          SELECT occurred_at::date AS material_date
+          FROM source_event
+          WHERE jsonb_array_length(source_refs) > 0
+          UNION
+          SELECT occurred_at::date AS material_date
+          FROM signal
+          WHERE jsonb_array_length(source_refs) > 0
+          UNION
+          SELECT first_seen_at::date AS material_date
+          FROM operator_contact
+          WHERE source_ref ? 'source_name'
+          UNION
+          SELECT generated_at::date AS material_date
+          FROM opportunity_scorecard
+          WHERE jsonb_array_length(source_refs) > 0
+          UNION
+          SELECT generated_at::date AS material_date
+          FROM opportunity_proposition
+          WHERE jsonb_array_length(source_refs) > 0
+        )
+        SELECT material_date
+        FROM material_dates
+        WHERE material_date IS NOT NULL
+        ORDER BY material_date DESC
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [cast(date, row["material_date"]) for row in rows]
 
 
 def _assert_source_backed_sections(sections: dict[str, list[dict[str, Any]]]) -> None:

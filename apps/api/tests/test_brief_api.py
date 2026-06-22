@@ -12,18 +12,34 @@ from apps.api.app.routers import brief
 
 
 class FakeResult:
-    def __init__(self, row: dict[str, Any] | None) -> None:
+    def __init__(
+        self,
+        row: dict[str, Any] | None = None,
+        rows: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.row = row
+        self.rows = rows or ([] if row is None else [row])
 
     def fetchone(self) -> dict[str, Any] | None:
         return self.row
 
+    def fetchall(self) -> list[dict[str, Any]]:
+        return self.rows
+
 
 class FakeConn:
-    def __init__(self, row: dict[str, Any] | None) -> None:
+    def __init__(
+        self,
+        row: dict[str, Any] | None,
+        rows: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.row = row
+        self.rows = rows or ([] if row is None else [row])
 
     def execute(self, query: str, params: tuple[Any, ...] | None = None) -> FakeResult:
+        if "ORDER BY brief_date" in query:
+            limit = int(params[0]) if params else len(self.rows)
+            return FakeResult(rows=self.rows[:limit])
         if self.row is None:
             return FakeResult(None)
         if "WHERE brief_date" in query and params and params[0] != self.row["brief_date"]:
@@ -82,6 +98,30 @@ def test_no_change_brief_returns_honest_empty_sections(monkeypatch) -> None:
     assert body["top_actions"] == []
     assert body["sections"]["changed_operators"] == []
     assert "No material" in body["brief_text"]
+
+
+def test_recent_briefs_lists_history(monkeypatch) -> None:
+    latest = _brief_row(status="material_changes")
+    prior = _brief_row(status="no_material_changes", include_items=False)
+    prior["id"] = "daily_brief_2026_06_21"
+    prior["brief_date"] = date(2026, 6, 21)
+    rows = [latest, prior]
+
+    @contextmanager
+    def fake_connection() -> Iterator[FakeConn]:
+        yield FakeConn(latest, rows=rows)
+
+    monkeypatch.setattr(brief, "get_connection", fake_connection)
+    app = FastAPI()
+    app.include_router(brief.router)
+    client = TestClient(app)
+
+    response = client.get("/brief/recent?limit=2")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["count"] == 2
+    assert [item["brief_date"] for item in body["items"]] == ["2026-06-22", "2026-06-21"]
 
 
 def _brief_row(*, status: str, include_items: bool = True) -> dict[str, Any]:

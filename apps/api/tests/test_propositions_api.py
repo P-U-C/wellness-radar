@@ -55,6 +55,19 @@ def test_propositions_endpoint_returns_written_evidence(monkeypatch) -> None:
         "population": 44149.8667,
         "business_count": 17.3333,
         "demand_source": "statcan_wds_fixture",
+        "thesis": "Mount Pleasant thesis with named competitor AetherHaus.",
+        "market_sizing_line": "Market sizing proxy: 44,150 people x $2,180 = $96.2M.",
+        "spend_proxy_label": "StatCan 2023 recreation household spend proxy",
+        "spend_proxy_value": 2179.5833,
+        "nearest_competitors": [
+            {
+                "operator_id": "op_aetherhaus",
+                "name": "AetherHaus",
+                "distance_km": 1.2,
+                "source_refs": [SOURCE_REF],
+            }
+        ],
+        "confidence_narrative": "Confidence 0.42: fixture-backed denominator.",
         "supporting_signals": [
             {"kind": "population", "label": "44,150 people", "source_refs": [SOURCE_REF]}
         ],
@@ -84,6 +97,10 @@ def test_propositions_endpoint_returns_written_evidence(monkeypatch) -> None:
     assert body["meta"]["count"] == 1
     item = body["items"][0]
     assert item["headline"] == row["headline"]
+    assert item["thesis"] == row["thesis"]
+    assert item["market_sizing_line"] == row["market_sizing_line"]
+    assert item["nearest_competitors"][0]["name"] == "AetherHaus"
+    assert item["confidence_narrative"] == row["confidence_narrative"]
     assert item["confidence"] == 0.63
     assert item["source_refs"] == [SOURCE_REF]
     assert item["supporting_signals"][0]["kind"] == "population"

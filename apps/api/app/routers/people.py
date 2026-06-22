@@ -14,6 +14,7 @@ from packages.shared.ids import stable_id
 
 router = APIRouter(tags=["people"])
 CorrectionWritePrincipal = Annotated[Principal, Depends(require_permission("correction:write"))]
+MAX_PEOPLE_LIMIT = 250
 
 
 class PeopleCorrectionRequest(BaseModel):
@@ -26,8 +27,9 @@ class PeopleCorrectionRequest(BaseModel):
 @router.get("/people")
 def list_people(
     sort: Literal["influence", "confidence", "name", "role"] = Query(default="influence"),
-    limit: int = Query(default=100, ge=1, le=250),
+    limit: int = Query(default=100, ge=1),
 ) -> dict[str, Any]:
+    active_limit = min(limit, MAX_PEOPLE_LIMIT)
     order_by = {
         "influence": "COALESCE(pic.influence_score, p.influence_score, 0) DESC, p.name ASC",
         "confidence": "p.confidence_score DESC, p.name ASC",
@@ -60,10 +62,18 @@ def list_people(
                 ORDER BY {order_by}
                 LIMIT %s
                 """,
-                (limit,),
+                (active_limit,),
             ).fetchall(),
         )
-    return {"items": [_person_item(row) for row in rows], "meta": {"count": len(rows)}}
+    return {
+        "items": [_person_item(row) for row in rows],
+        "meta": {
+            "count": len(rows),
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_PEOPLE_LIMIT,
+        },
+    }
 
 
 @router.get("/people/{person_id}")
@@ -156,6 +166,7 @@ def create_people_correction_request(
 
 def _person_item(row: dict[str, Any]) -> dict[str, Any]:
     affiliation = row["affiliations"][0] if row["affiliations"] else {}
+    contacts = _public_person_contacts(row.get("public_profiles") or {})
     return {
         "id": row["id"],
         "name": row["name"],
@@ -164,6 +175,9 @@ def _person_item(row: dict[str, Any]) -> dict[str, Any]:
         "primary_affiliation": affiliation.get("organization_name"),
         "affiliation_role": affiliation.get("role"),
         "public_profiles": row["public_profiles"],
+        "contacts": contacts,
+        "contactable": bool(contacts),
+        "person_type": _person_type(row["roles"], row["affiliations"]),
         "influence_score": (
             float(row["influence_score"]) if row["influence_score"] is not None else None
         ),
@@ -182,3 +196,38 @@ def _person_item(row: dict[str, Any]) -> dict[str, Any]:
         "freshness_at": iso_or_none(row.get("last_seen_at")),
         "freshness_age_hours": age_hours(row.get("last_seen_at")),
     }
+
+
+def _public_person_contacts(public_profiles: dict[str, Any]) -> list[dict[str, Any]]:
+    contacts: list[dict[str, Any]] = []
+    for key, contact_type in (("email", "email"), ("phone", "phone")):
+        value = public_profiles.get(key)
+        if not value:
+            continue
+        contacts.append(
+            {
+                "contact_type": contact_type,
+                "type": contact_type,
+                "value": value,
+                "source": "public_profiles",
+                "confidence": 0.6,
+            }
+        )
+    return contacts
+
+
+def _person_type(roles: list[str], affiliations: list[dict[str, Any]]) -> str:
+    role_text = " ".join(roles).lower()
+    affiliation_text = " ".join(
+        str(item.get("organization_name") or "") for item in affiliations
+    ).lower()
+    if "operator" in role_text or any(
+        key in affiliation_text for key in ("wellness", "aetherhaus", "tality")
+    ):
+        return "operator"
+    if any(
+        key in role_text or key in affiliation_text
+        for key in ("minister", "government", "provincial", "advocate", "attorney")
+    ):
+        return "policy_figure"
+    return "public_professional"
