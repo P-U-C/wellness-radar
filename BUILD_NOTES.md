@@ -409,6 +409,66 @@ Results:
 - Production deployment secrets, real external alert delivery, and public people-correction ownership/SLA must be configured outside the repository before public launch.
 - APScheduler remains an idle placeholder from earlier milestones; the Compose jobs service still runs startup sequences and idles.
 
+## CM1 — Contacts
+
+### What Landed
+
+- Added source-backed public contact capture for operators: `phone`, `website`, `social_links`, and an `operator_contact` method table with per-contact `source_ref` and confidence.
+- OSM Overpass now extracts public `phone`/`contact:phone`, `website`/`contact:website`, `email`/`contact:email`, `contact:instagram`, and `contact:facebook` tags.
+- City of Vancouver business licences now surface public business phone/website fields when present and carry public licence/business-name candidates into the people layer when they look like named public operators.
+- Manual recovery seeds now preserve their public operator websites as contacts.
+- `/operators`, `/operators/{id}`, and new `/leads` return contact arrays with provenance; `/admin/exports/leads` and `/admin/exports/people` support CSV/JSON.
+- Operator detail, map drawer, search, and opportunity panel now show reachable-contact counts and public contact links.
+
+### Verified Coverage
+
+Fixture-backed clean DB run, after migrations `001`-`007`, m2 fixture ingest, and m3 analytics:
+
+- Source-backed operators: 15.
+- Operators with at least one public contact: 13 of 15 (`86.67%`).
+- Contact rows: 19 total: 13 website, 3 phone, 1 email, 2 social.
+- `/operators` metadata reported the same contact coverage: 13 of 15.
+- `/operators/{id}` sample: `Art of Sauna` returned 4 contacts; first contact source was OSM node `10555619247`.
+- `/leads?limit=20` returned 13 reachable operators.
+- `/admin/exports/leads?format=csv` produced 19 contact rows with contact/provenance columns.
+- `/admin/exports/people?format=json` returned 7 people, including the fixture-backed City licence public-name candidate.
+
+### Fixture Ingest Evidence
+
+- Manual seed: 12 fetched, 12 persisted, 0 rejected.
+- City Vancouver business licence fixture: 3 fetched, 3 persisted, 0 rejected.
+- OSM Overpass fixture: 3 fetched, 2 persisted, 1 rejected by `bc_gate` for Vancouver WA.
+- Manual people CSV: 6 fetched, 6 persisted.
+- M3 analytics on the same clean DB completed with 0 errors.
+
+### Limitation
+
+Contact coverage is mostly websites. Phones, emails, and social handles are sparse in the reviewed public fixtures; this is expected and must not be filled by inference. No LinkedIn data, private personal data, patient data, or health attributes were added.
+
+### CM1 Commands Run
+
+```bash
+python3 -m pytest apps/jobs/tests/test_m2_adapters.py apps/jobs/tests/test_city_vancouver_licences.py packages/geo/tests/test_bc_gate.py
+python3 -m pytest
+python3 -m ruff check apps packages db
+python3 -m mypy apps packages db
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm1_clean python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_cm1_clean python3 -m apps.jobs.runner m3
+```
+
+Results:
+
+- Python tests: 50 passed.
+- Web tests: 9 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web lint/typecheck/build: passed; Vite still reports the existing large chunk warning from map/graph dependencies.
+- Clean PostGIS migrations applied from empty DB: `001`, `002`, `003`, `004`, `005`, `006`, `007`.
+
 ## Final Status
 
 ### Production Gate
