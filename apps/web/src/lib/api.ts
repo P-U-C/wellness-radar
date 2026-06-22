@@ -468,7 +468,7 @@ export async function fetchCategoryVelocity(category: string): Promise<CategoryV
 
 export async function fetchDailyBrief(): Promise<DailyBrief | null> {
   try {
-    return await getJson<DailyBrief>("/api/brief");
+    return await getJson<DailyBrief>("/brief");
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("404 ")) {
       return null;

@@ -53,7 +53,7 @@ def test_latest_brief_is_public_and_returns_sections(monkeypatch) -> None:
     app.include_router(brief.router)
     client = TestClient(app)
 
-    response = client.get("/api/brief")
+    response = client.get("/brief")
 
     assert response.status_code == 200
     body = response.json()
@@ -74,7 +74,7 @@ def test_no_change_brief_returns_honest_empty_sections(monkeypatch) -> None:
     app.include_router(brief.router)
     client = TestClient(app)
 
-    response = client.get("/api/brief/2026-06-22")
+    response = client.get("/brief/2026-06-22")
 
     assert response.status_code == 200
     body = response.json()
