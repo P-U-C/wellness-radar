@@ -4,6 +4,7 @@ import { LayerToggle, RangeSlider } from "../components";
 import { EntityDrawer } from "../features/entities/EntityDrawer";
 import { OperatorDetail } from "../features/entities/OperatorDetail";
 import { OpportunityPanel } from "../features/analytics/OpportunityPanel";
+import { TodayBriefPanel } from "../features/brief/TodayBriefPanel";
 import { SignalFeed } from "../features/feed/SignalFeed";
 import { PeopleGraph } from "../features/graph/PeopleGraph";
 import { KioskMode } from "../features/kiosk/KioskMode";
@@ -13,6 +14,7 @@ import { SearchScreen } from "../features/search/SearchScreen";
 import { SystemScreen } from "../features/system/SystemScreen";
 import {
   fetchCategoryVelocity,
+  fetchDailyBrief,
   fetchObservability,
   fetchOperators,
   fetchOpportunityScorecards,
@@ -24,6 +26,7 @@ import {
   fetchTrends,
   fetchWhitespace,
   type CategoryVelocity,
+  type DailyBrief,
   type GraphEdge,
   type GraphNode,
   type ObservabilitySummary,
@@ -77,6 +80,7 @@ export function App() {
   const [heatmapCells, setHeatmapCells] = useState<OpportunityHeatmapCell[]>([]);
   const [scorecards, setScorecards] = useState<OpportunityScorecard[]>([]);
   const [velocity, setVelocity] = useState<CategoryVelocity[]>([]);
+  const [brief, setBrief] = useState<DailyBrief | null>(null);
   const [trends, setTrends] = useState<TrendTile[]>([]);
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
@@ -117,6 +121,7 @@ export function App() {
         heatmapData,
         scorecardData,
         velocityData,
+        briefData,
         trendData,
         graphData,
         observabilityData
@@ -129,6 +134,7 @@ export function App() {
         fetchWhitespace(analyticsCategory),
         fetchOpportunityScorecards(analyticsCategory),
         fetchCategoryVelocity(analyticsCategory),
+        fetchDailyBrief(),
         fetchTrends(),
         fetchPeopleGraph(),
         fetchObservability()
@@ -141,6 +147,7 @@ export function App() {
       setHeatmapCells(heatmapData);
       setScorecards(scorecardData);
       setVelocity(velocityData);
+      setBrief(briefData);
       setTrends(trendData);
       setGraphNodes(graphData.nodes);
       setGraphEdges(graphData.edges);
@@ -497,6 +504,7 @@ export function App() {
                   onOpenOperator={openOperator}
                 />
               </div>
+              <TodayBriefPanel brief={brief} loading={loading} error={error} />
             </div>
 
             <SignalFeed
