@@ -68,6 +68,19 @@ def test_osm_overpass_adapter_normalizes_fixture_and_rejects_wa() -> None:
     assert metrics.records_rejected == 1
     assert len(repository.operators) == 2
     assert all(operator.source_refs for operator in repository.operators.values())
+    art = next(
+        operator for operator in repository.operators.values() if operator.name == "Art of Sauna"
+    )
+    assert art.phone == "+1 604 555 0100"
+    assert art.website == "https://artofsauna.ca/"
+    assert art.social_links["instagram"] == "https://www.instagram.com/artofsauna"
+    assert {contact["type"] for contact in art.contacts} == {
+        "email",
+        "phone",
+        "social",
+        "website",
+    }
+    assert all(contact["source_ref"]["source_name"] == adapter.name for contact in art.contacts)
 
 
 def test_manual_recovery_seed_contains_required_private_alpha_records() -> None:
@@ -82,6 +95,8 @@ def test_manual_recovery_seed_contains_required_private_alpha_records() -> None:
         operator.source_refs[0]["source_name"] == "manual_seed"
         for operator in repository.operators.values()
     )
+    assert all(operator.website for operator in repository.operators.values())
+    assert all(operator.contacts for operator in repository.operators.values())
 
 
 def test_orgbook_enrichment_matches_exact_legal_name_and_records_unmatched() -> None:

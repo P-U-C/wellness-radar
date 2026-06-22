@@ -72,6 +72,10 @@ class CanonicalOperator:
     source_refs: list[dict[str, Any]]
     confidence_score: float
     occurred_at: datetime
+    phone: str | None = None
+    website: str | None = None
+    social_links: dict[str, Any] = field(default_factory=dict)
+    contacts: list[dict[str, Any]] = field(default_factory=list)
     payload: dict[str, Any] = field(default_factory=dict)
 
 

@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from packages.schemas.canonical import CanonicalOperator
+from packages.shared.contacts import build_contact_method
 from packages.shared.dedupe import choose_best_name
 from packages.shared.ids import stable_id
 from packages.shared.normalizers import (
@@ -106,6 +107,61 @@ class CityVancouverBusinessLicencesAdapter:
         ]
         status = normalize_status(raw.get("status"))
         confidence = 0.86 if lat is not None and lng is not None else 0.68
+        phone = _first_present(
+            raw,
+            "businessphone",
+            "business_phone",
+            "contactphone",
+            "contact_phone",
+            "phone",
+            "phone_number",
+            "phonenumber",
+            "telephone",
+        )
+        website = _first_present(
+            raw,
+            "businesswebsite",
+            "business_website",
+            "website",
+            "websiteurl",
+            "website_url",
+            "webaddress",
+            "web_address",
+            "businessurl",
+            "business_url",
+            "url",
+        )
+        contacts: list[dict[str, Any]] = []
+        ref = refs[0]
+        for contact_type, value in [("phone", phone), ("website", website)]:
+            contact = build_contact_method(
+                contact_type=contact_type,
+                value=value,
+                source_ref=ref,
+                confidence=confidence,
+            )
+            if contact is not None:
+                contacts.append(contact)
+        normalized_phone = next(
+            (str(contact["value"]) for contact in contacts if contact["type"] == "phone"),
+            None,
+        )
+        normalized_website = next(
+            (str(contact["value"]) for contact in contacts if contact["type"] == "website"),
+            None,
+        )
+        licensee_name = _clean_business_name(raw.get("businessname"))
+        public_contact_candidates = []
+        person_candidate = _person_candidate_from_business_name(raw.get("businessname"))
+        if person_candidate:
+            public_contact_candidates.append(
+                {
+                    "name": person_candidate,
+                    "role": "Public business licence name",
+                    "source_ref": ref,
+                    "confidence": 0.7,
+                }
+            )
 
         return [
             CanonicalOperator(
@@ -129,9 +185,14 @@ class CityVancouverBusinessLicencesAdapter:
                 source_refs=refs,
                 confidence_score=confidence,
                 occurred_at=occurred_at,
+                phone=normalized_phone,
+                website=normalized_website,
+                contacts=contacts,
                 payload={
                     "business_type": raw.get("businesstype"),
                     "business_subtype": raw.get("businesssubtype"),
+                    "public_licensee_name": licensee_name,
+                    "public_contact_candidates": public_contact_candidates,
                     "licence_status": raw.get("status"),
                     "issued_date": raw.get("issueddate"),
                     "expired_date": raw.get("expireddate"),
@@ -176,3 +237,48 @@ def _occurred_at(issued_date: str | None, extract_date: str | None) -> datetime:
     if issued_at > extract_at:
         return extract_at
     return issued_at
+
+
+def _first_present(raw: dict[str, Any], *keys: str) -> Any:
+    lowered = {key.lower().replace(" ", "").replace("-", "_"): value for key, value in raw.items()}
+    for key in keys:
+        direct = raw.get(key)
+        if direct is not None and str(direct).strip():
+            return direct
+        compact_key = key.lower().replace(" ", "").replace("-", "_")
+        value = lowered.get(compact_key)
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
+def _clean_business_name(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+    return text or None
+
+
+def _person_candidate_from_business_name(value: Any) -> str | None:
+    text = _clean_business_name(value)
+    if not text:
+        return None
+    legal_terms = {
+        "corp",
+        "corporation",
+        "inc",
+        "incorporated",
+        "ltd",
+        "limited",
+        "llc",
+        "company",
+        "co",
+    }
+    words = [word.strip(".,").lower() for word in text.split()]
+    if any(word in legal_terms for word in words):
+        return None
+    if len(words) < 2 or len(words) > 4:
+        return None
+    return text

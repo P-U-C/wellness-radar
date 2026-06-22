@@ -31,7 +31,9 @@ from packages.schemas.canonical import (
     SignalRecord,
     SourceEventRecord,
 )
+from packages.shared.contacts import merge_contact_methods, normalize_contact_key
 from packages.shared.ids import content_hash, stable_id
+from packages.shared.normalizers import normalize_name
 
 
 class RunnerRepository(Protocol):
@@ -71,6 +73,9 @@ class RunnerRepository(Protocol):
         ...
 
     def upsert_operator(self, operator: CanonicalOperator) -> None:
+        ...
+
+    def upsert_person(self, person: CanonicalPerson) -> None:
         ...
 
     def upsert_source_event(self, event: SourceEventRecord) -> None:
@@ -253,6 +258,9 @@ class DatabaseRepository:
               address,
               municipality,
               neighborhood,
+              phone,
+              website,
+              social_links,
               geom,
               licence_ref,
               source_refs,
@@ -264,6 +272,9 @@ class DatabaseRepository:
               %s,
               %s,
               %s::operator_status,
+              %s,
+              %s,
+              %s,
               %s,
               %s,
               %s,
@@ -292,6 +303,23 @@ class DatabaseRepository:
               address = COALESCE(EXCLUDED.address, "operator".address),
               municipality = COALESCE(EXCLUDED.municipality, "operator".municipality),
               neighborhood = COALESCE(EXCLUDED.neighborhood, "operator".neighborhood),
+              phone = CASE
+                WHEN EXCLUDED.phone IS NULL THEN "operator".phone
+                WHEN "operator".phone IS NULL THEN EXCLUDED.phone
+                WHEN EXCLUDED.confidence_score >= "operator".confidence_score THEN EXCLUDED.phone
+                ELSE "operator".phone
+              END,
+              website = CASE
+                WHEN EXCLUDED.website IS NULL THEN "operator".website
+                WHEN "operator".website IS NULL THEN EXCLUDED.website
+                WHEN EXCLUDED.confidence_score >= "operator".confidence_score THEN EXCLUDED.website
+                ELSE "operator".website
+              END,
+              social_links = CASE
+                WHEN EXCLUDED.confidence_score >= "operator".confidence_score
+                THEN "operator".social_links || EXCLUDED.social_links
+                ELSE EXCLUDED.social_links || "operator".social_links
+              END,
               geom = COALESCE(EXCLUDED.geom, "operator".geom),
               licence_ref = COALESCE(EXCLUDED.licence_ref, "operator".licence_ref),
               source_refs = (
@@ -310,6 +338,9 @@ class DatabaseRepository:
                 operator.address,
                 operator.municipality,
                 operator.neighborhood,
+                operator.phone,
+                operator.website,
+                Jsonb(operator.social_links),
                 operator.lng,
                 operator.lat,
                 operator.lng,
@@ -317,6 +348,62 @@ class DatabaseRepository:
                 operator.licence_ref,
                 Jsonb(operator.source_refs),
                 operator.confidence_score,
+            ),
+        )
+        for contact in operator.contacts:
+            self._upsert_operator_contact(operator.id, contact)
+
+    def _upsert_operator_contact(self, operator_id: str, contact: dict[str, Any]) -> None:
+        contact_type = str(contact.get("type") or "").strip().lower()
+        value = str(contact.get("value") or "").strip()
+        platform = str(contact.get("platform") or "").strip().lower() or None
+        source_ref = contact.get("source_ref")
+        if not source_ref or not isinstance(source_ref, dict) or not source_ref.get("source_name"):
+            raise ValueError(f"operator contact for {operator_id} is missing source_ref")
+        normalized_value = normalize_contact_key(contact_type, value, platform=platform)
+        if not contact_type or not value or not normalized_value:
+            return
+        confidence = float(contact.get("confidence") or 0.5)
+        contact_id = stable_id("contact", operator_id, contact_type, normalized_value, platform)
+        self.conn.execute(
+            """
+            INSERT INTO operator_contact (
+              id,
+              operator_id,
+              contact_type,
+              value,
+              normalized_value,
+              platform,
+              source_ref,
+              confidence_score
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+              value = CASE
+                WHEN EXCLUDED.confidence_score >= operator_contact.confidence_score
+                THEN EXCLUDED.value
+                ELSE operator_contact.value
+              END,
+              source_ref = CASE
+                WHEN EXCLUDED.confidence_score >= operator_contact.confidence_score
+                THEN EXCLUDED.source_ref
+                ELSE operator_contact.source_ref
+              END,
+              confidence_score = GREATEST(
+                operator_contact.confidence_score,
+                EXCLUDED.confidence_score
+              ),
+              last_seen_at = now()
+            """,
+            (
+                contact_id,
+                operator_id,
+                contact_type,
+                value,
+                normalized_value,
+                platform,
+                Jsonb(source_ref),
+                confidence,
             ),
         )
 
@@ -638,10 +725,13 @@ class DatabaseRepository:
             UPDATE "operator"
             SET organization_id = %s,
                 orgbook_id = %s,
+                website = COALESCE("operator".website, organization.website),
                 last_seen_at = now()
-            WHERE id = %s
+            FROM organization
+            WHERE "operator".id = %s
+              AND organization.id = %s
             """,
-            (organization_id, orgbook_id, operator_id),
+            (organization_id, orgbook_id, operator_id, organization_id),
         )
 
     def upsert_person(self, person: CanonicalPerson) -> None:
@@ -884,6 +974,14 @@ class InMemoryRepository:
         )
 
     def upsert_operator(self, operator: CanonicalOperator) -> None:
+        existing = self.operators.get(operator.id)
+        if existing is not None:
+            operator.phone = existing.phone or operator.phone
+            operator.website = existing.website or operator.website
+            operator.social_links = {**operator.social_links, **existing.social_links}
+            operator.contacts = merge_contact_methods(existing.contacts, operator.contacts)
+            operator.source_refs = _unique_refs([*existing.source_refs, *operator.source_refs])
+            operator.categories = sorted(set([*existing.categories, *operator.categories]))
         self.operators[operator.id] = operator
 
     def find_operator_id(self, operator: CanonicalOperator) -> str | None:
@@ -906,7 +1004,7 @@ class InMemoryRepository:
                 id=operator.id,
                 name=operator.name,
                 normalized_name=operator.normalized_name,
-                website=operator.source_url,
+                website=operator.website,
                 orgbook_id=None,
                 source_refs=operator.source_refs,
                 confidence_score=operator.confidence_score,
@@ -924,8 +1022,17 @@ class InMemoryRepository:
         operator = self.operators[operator_id]
         operator.payload["organization_id"] = organization_id
         operator.payload["orgbook_id"] = orgbook_id
+        organization = self.organizations.get(organization_id)
+        if organization and not operator.website:
+            operator.website = organization.website
 
     def upsert_person(self, person: CanonicalPerson) -> None:
+        existing = self.people.get(person.id)
+        if existing is not None:
+            person.roles = sorted(set([*existing.roles, *person.roles]))
+            person.affiliations = [*existing.affiliations, *person.affiliations]
+            person.source_refs = _unique_refs([*existing.source_refs, *person.source_refs])
+            person.public_profiles = {**existing.public_profiles, **person.public_profiles}
         self.people[person.id] = person
 
     def fetch_signals_for_enrichment(self, limit: int) -> list[dict[str, Any]]:
@@ -1013,6 +1120,8 @@ def run_adapter(adapter: Any, repository: RunnerRepository | None = None) -> Run
                 event = source_event_from_operator(operator)
                 signal = signal_from_operator(operator, event)
                 repo.upsert_operator(operator)
+                for person in public_people_from_operator(operator):
+                    repo.upsert_person(person)
                 repo.upsert_source_event(event)
                 repo.upsert_signal(signal)
                 metrics.records_persisted += 1
@@ -1163,6 +1272,64 @@ def _operator_trust_tier(operator: CanonicalOperator) -> str:
         if trust:
             return str(trust)
     return "official"
+
+
+def public_people_from_operator(operator: CanonicalOperator) -> list[CanonicalPerson]:
+    people: list[CanonicalPerson] = []
+    candidates = operator.payload.get("public_contact_candidates") or []
+    if not isinstance(candidates, list):
+        return people
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        name = str(candidate.get("name") or "").strip()
+        if not name:
+            continue
+        source_ref = candidate.get("source_ref") or (
+            operator.source_refs[0] if operator.source_refs else None
+        )
+        if not source_ref or not isinstance(source_ref, dict) or not source_ref.get("source_name"):
+            continue
+        role = str(candidate.get("role") or "Public operator").strip()
+        person_id = stable_id("person", operator.source_name, normalize_name(name))
+        people.append(
+            CanonicalPerson(
+                id=person_id,
+                name=name,
+                normalized_name=normalize_name(name),
+                roles=[role],
+                affiliations=[
+                    {
+                        "operator_id": operator.id,
+                        "operator_name": operator.name,
+                        "organization_name": operator.name,
+                        "role": role,
+                        "source_ref": source_ref,
+                    }
+                ],
+                public_profiles={"primary": source_ref.get("url")} if source_ref.get("url") else {},
+                confidence_score=float(candidate.get("confidence") or 0.65),
+                source_refs=[source_ref],
+            )
+        )
+    return people
+
+
+def _unique_refs(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, ...]] = set()
+    unique: list[dict[str, Any]] = []
+    for ref in refs:
+        key = (
+            ref.get("source_name"),
+            ref.get("source_record_id"),
+            ref.get("url"),
+            ref.get("seen_at"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(ref)
+    return unique
 
 
 def run_event_adapter(adapter: Any, repository: RunnerRepository | None = None) -> RunMetrics:

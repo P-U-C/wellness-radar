@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from packages.schemas.canonical import CanonicalOperator
+from packages.shared.contacts import build_contact_method
 from packages.shared.ids import stable_id
 from packages.shared.normalizers import normalize_name
 from packages.shared.provenance import source_ref
@@ -54,6 +55,14 @@ class ManualRecoverySeedAdapter:
                 licence=self.licence,
             )
         ]
+        website_contact = build_contact_method(
+            contact_type="website",
+            value=raw.get("website") or raw.get("source_url"),
+            source_ref=refs[0],
+            confidence=_float_or_none(raw.get("confidence_score")) or 0.6,
+        )
+        contacts = [website_contact] if website_contact else []
+        website = str(website_contact["value"]) if website_contact else None
         return [
             CanonicalOperator(
                 id=stable_id("op", self.name, source_record_id),
@@ -76,6 +85,8 @@ class ManualRecoverySeedAdapter:
                 source_refs=refs,
                 confidence_score=_float_or_none(raw.get("confidence_score")) or 0.6,
                 occurred_at=datetime.now(timezone.utc),
+                website=website,
+                contacts=contacts,
                 payload={
                     "website": raw.get("website"),
                     "notes": raw.get("notes"),
