@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -13,6 +14,8 @@ from packages.shared.ids import stable_id
 DEFAULT_FIXTURE_PATH = (
     Path(__file__).resolve().parents[1] / "fixtures" / "statcan_m3_denominators.json"
 )
+
+FetchMode = Literal["auto", "fixture", "live"]
 
 
 @dataclass(frozen=True)
@@ -61,31 +64,63 @@ class StatCanWdsAdapter:
         *,
         client: httpx.Client | None = None,
         fixture_path: Path | None = DEFAULT_FIXTURE_PATH,
+        mode: FetchMode | None = None,
     ) -> None:
         self.client = client or httpx.Client(timeout=30.0)
         self.fixture_path = fixture_path
+        self.mode: FetchMode = mode or os.getenv("WR_STATCAN_WDS_MODE", "auto")  # type: ignore[assignment]
+        if self.mode not in {"auto", "fixture", "live"}:
+            raise ValueError("WR_STATCAN_WDS_MODE must be one of auto, fixture, or live")
 
     def fetch(self) -> list[dict[str, Any]]:
-        if self.fixture_path is not None:
-            payload = json.loads(self.fixture_path.read_text())
-            shared_refs = payload.get("source_refs", [])
-            records = payload.get("records", [])
-            return [
-                {
-                    **record,
-                    "fixture_recorded_at": payload.get("fixture_recorded_at"),
-                    "fixture_note": payload.get("fixture_note"),
-                    "source_refs": [*shared_refs, *record.get("source_refs", [])],
-                }
-                for record in records
-            ]
+        if self.mode == "fixture":
+            return self._fixture_records(live_attempted=False, live_error=None)
 
+        try:
+            return self._fetch_live_normalized()
+        except Exception as exc:
+            if self.mode == "live" or self.fixture_path is None:
+                raise
+            return self._fixture_records(live_attempted=True, live_error=str(exc))
+
+    def _fetch_live_normalized(self) -> list[dict[str, Any]]:
         response = self.client.get(f"{self.wds_base_url}/getAllCubesListLite")
         response.raise_for_status()
         payload = response.json()
-        if isinstance(payload, dict) and "records" in payload:
-            return list(payload["records"])
-        raise RuntimeError("StatCan live WDS fetch must return normalized denominator records")
+        if not isinstance(payload, list):
+            raise RuntimeError("StatCan live WDS cube list did not return a list payload")
+        configured_records = _records_from_live_payload(payload)
+        if configured_records:
+            return configured_records
+        raise RuntimeError(
+            "StatCan WDS is reachable but live denominator vectors are not configured; "
+            "using the recorded CM3 denominator fixture with explicit provenance"
+        )
+
+    def _fixture_records(
+        self,
+        *,
+        live_attempted: bool,
+        live_error: str | None,
+    ) -> list[dict[str, Any]]:
+        if self.fixture_path is None:
+            raise RuntimeError("StatCan fixture_path is required for fixture fallback")
+        payload = json.loads(self.fixture_path.read_text())
+        shared_refs = payload.get("source_refs", [])
+        records = payload.get("records", [])
+        return [
+            {
+                **record,
+                "fixture_recorded_at": payload.get("fixture_recorded_at"),
+                "fixture_note": payload.get("fixture_note"),
+                "demand_source": "statcan_wds_fixture",
+                "demand_source_status": "fixture_fallback" if live_attempted else "fixture",
+                "live_attempted": live_attempted,
+                "live_error": live_error,
+                "source_refs": [*shared_refs, *record.get("source_refs", [])],
+            }
+            for record in records
+        ]
 
     def source_record_id(self, raw: dict[str, Any]) -> str:
         return str(raw["geo_code"])
@@ -117,6 +152,10 @@ class StatCanWdsAdapter:
             payload={
                 "raw_payload_id": raw_payload_id,
                 "fixture_note": raw.get("fixture_note"),
+                "demand_source": raw.get("demand_source", "statcan_wds_live"),
+                "demand_source_status": raw.get("demand_source_status", "live"),
+                "live_attempted": bool(raw.get("live_attempted", False)),
+                "live_error": raw.get("live_error"),
                 "geo_code": raw.get("geo_code"),
             },
         )
@@ -162,6 +201,10 @@ class StatCanWdsAdapter:
             payload={
                 "raw_payload_id": raw_payload_id,
                 "fixture_note": raw.get("fixture_note"),
+                "demand_source": raw.get("demand_source", "statcan_wds_live"),
+                "demand_source_status": raw.get("demand_source_status", "live"),
+                "live_attempted": bool(raw.get("live_attempted", False)),
+                "live_error": raw.get("live_error"),
                 "source_metric": metric,
             },
         )
@@ -173,3 +216,15 @@ def _optional_float(value: object) -> float | None:
     if not isinstance(value, str | int | float):
         raise TypeError(f"cannot convert {type(value).__name__} to float")
     return float(value)
+
+
+def _records_from_live_payload(payload: list[Any]) -> list[dict[str, Any]]:
+    """Future hook for configured WDS vectors.
+
+    The WDS cube inventory proves service reachability, but denominator rows require
+    reviewed table/vector selections before production use. Returning an empty list
+    forces auto mode to take the transparent fixture fallback instead of silently
+    treating cube metadata as denominator data.
+    """
+
+    return []

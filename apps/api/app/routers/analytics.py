@@ -23,13 +23,25 @@ REQUIRED_OPPORTUNITY_COMPONENTS = {
 @router.get("/whitespace")
 def whitespace_heatmap(
     category: str = Query(default="recovery_contrast_therapy"),
+    geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, Any]:
+    clauses = [
+        "category = %s",
+        "jsonb_array_length(source_refs) > 0",
+        "component_breakdown ?& %s::text[]",
+        "component_breakdown->>'source_confidence' IS NOT NULL",
+    ]
+    params: list[Any] = [category, list(REQUIRED_OPPORTUNITY_COMPONENTS)]
+    if geo_level:
+        clauses.append("geo_level = %s")
+        params.append(geo_level)
+    params.append(limit)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
             conn.execute(
-                """
+                f"""
                 SELECT
                   id,
                   category,
@@ -50,14 +62,11 @@ def whitespace_heatmap(
                   trace_payload,
                   generated_at
                 FROM opportunity_heatmap_cell
-                WHERE category = %s
-                  AND jsonb_array_length(source_refs) > 0
-                  AND component_breakdown ?& %s::text[]
-                  AND component_breakdown->>'source_confidence' IS NOT NULL
+                WHERE {' AND '.join(clauses)}
                 ORDER BY opportunity_score DESC, geo_name ASC
                 LIMIT %s
                 """,
-                (category, list(REQUIRED_OPPORTUNITY_COMPONENTS), limit),
+                params,
             ).fetchall(),
         )
     return {"items": [_heatmap_item(row) for row in rows], "meta": {"count": len(rows)}}
@@ -66,18 +75,31 @@ def whitespace_heatmap(
 @router.get("/opportunity-scorecards")
 def opportunity_scorecards(
     category: str = Query(default="recovery_contrast_therapy"),
+    geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),
     limit: int = Query(default=10, ge=1, le=100),
 ) -> dict[str, Any]:
+    clauses = [
+        "category = %s",
+        "jsonb_array_length(source_refs) > 0",
+        "component_breakdown ?& %s::text[]",
+        "component_breakdown->>'source_confidence' IS NOT NULL",
+    ]
+    params: list[Any] = [category, list(REQUIRED_OPPORTUNITY_COMPONENTS)]
+    if geo_level:
+        clauses.append("geo_level = %s")
+        params.append(geo_level)
+    params.append(limit)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
             conn.execute(
-                """
+                f"""
                 SELECT
                   id,
                   category,
                   geo_code,
                   geo_name,
+                  geo_level,
                   opportunity_score,
                   component_breakdown,
                   source_refs,
@@ -86,14 +108,11 @@ def opportunity_scorecards(
                   caveat,
                   generated_at
                 FROM opportunity_scorecard
-                WHERE category = %s
-                  AND jsonb_array_length(source_refs) > 0
-                  AND component_breakdown ?& %s::text[]
-                  AND component_breakdown->>'source_confidence' IS NOT NULL
+                WHERE {' AND '.join(clauses)}
                 ORDER BY opportunity_score DESC, geo_name ASC
                 LIMIT %s
                 """,
-                (category, list(REQUIRED_OPPORTUNITY_COMPONENTS), limit),
+                params,
             ).fetchall(),
         )
     return {"items": [_scorecard_item(row) for row in rows], "meta": {"count": len(rows)}}
@@ -202,6 +221,7 @@ def _scorecard_item(row: dict[str, Any]) -> dict[str, Any]:
         "category": row["category"],
         "geo_code": row["geo_code"],
         "geo_name": row["geo_name"],
+        "geo_level": row["geo_level"],
         "opportunity_score": float(row["opportunity_score"]),
         "component_breakdown": row["component_breakdown"],
         "source_refs": row["source_refs"],
