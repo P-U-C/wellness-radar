@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from apps.api.app.db.connection import get_connection
 from apps.api.app.services.freshness import age_hours
 
-router = APIRouter(prefix="/api/brief", tags=["brief"])
+router = APIRouter(prefix="/brief", tags=["brief"])
 MAX_BRIEF_HISTORY_LIMIT = 30
 
 

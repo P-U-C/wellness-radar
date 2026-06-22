@@ -12,7 +12,7 @@ MAX_PROPOSITION_LIMIT = 100
 
 
 @router.get("/propositions")
-@router.get("/api/propositions")
+@router.get("/propositions")
 def propositions(
     category: str | None = Query(default=None),
     geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),

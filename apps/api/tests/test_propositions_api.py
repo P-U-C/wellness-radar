@@ -89,7 +89,7 @@ def test_propositions_endpoint_returns_written_evidence(monkeypatch) -> None:
     client = TestClient(app)
 
     response = client.get(
-        "/api/propositions?category=recovery_contrast_therapy&geo_level=neighborhood"
+        "/propositions?category=recovery_contrast_therapy&geo_level=neighborhood"
     )
 
     assert response.status_code == 200
