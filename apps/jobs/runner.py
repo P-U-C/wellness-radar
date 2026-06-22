@@ -14,6 +14,7 @@ from apps.api.app.config import settings
 from apps.api.app.services.audit import write_audit_log
 from apps.jobs.adapters.city_vancouver_licences import CityVancouverBusinessLicencesAdapter
 from apps.jobs.adapters.manual_seed import ManualRecoverySeedAdapter
+from apps.jobs.adapters.municipal_facilities import MunicipalFacilitiesAdapter
 from apps.jobs.adapters.orgbook_bc import OrgBookBCEnrichmentAdapter
 from apps.jobs.adapters.osm_overpass import OsmOverpassAdapter
 from apps.jobs.adapters.rss import (
@@ -624,6 +625,27 @@ class DatabaseRepository:
         )
 
     def find_operator_id(self, operator: CanonicalOperator) -> str | None:
+        if operator.lat is not None and operator.lng is not None:
+            row = self.conn.execute(
+                """
+                SELECT id
+                FROM "operator"
+                WHERE normalized_name = %s
+                  AND geom IS NOT NULL
+                  AND ST_DWithin(
+                    geom,
+                    ST_SetSRID(
+                      ST_MakePoint(%s::double precision, %s::double precision),
+                      4326
+                    )::geography,
+                    100
+                  )
+                ORDER BY last_seen_at DESC
+                LIMIT 1
+                """,
+                (operator.normalized_name, operator.lng, operator.lat),
+            ).fetchone()
+            return str(row["id"]) if row else None
         row = self.conn.execute(
             """
             SELECT id
@@ -899,6 +921,7 @@ class InMemoryRepository:
         known_sources = {
             CityVancouverBusinessLicencesAdapter.name,
             ManualRecoverySeedAdapter.name,
+            MunicipalFacilitiesAdapter.name,
             OsmOverpassAdapter.name,
             OrgBookBCEnrichmentAdapter.name,
             RssFeedAdapter.name,
@@ -986,7 +1009,16 @@ class InMemoryRepository:
 
     def find_operator_id(self, operator: CanonicalOperator) -> str | None:
         for existing in self.operators.values():
-            if existing.normalized_name == operator.normalized_name:
+            if existing.normalized_name != operator.normalized_name:
+                continue
+            if operator.lat is not None and operator.lng is not None:
+                if existing.lat is None or existing.lng is None:
+                    continue
+                lat_delta = abs(existing.lat - operator.lat)
+                lng_delta = abs(existing.lng - operator.lng)
+                if lat_delta > 0.001 or lng_delta > 0.001:
+                    continue
+            if operator.lat is None or operator.lng is None or existing.lat is not None:
                 return existing.id
         return None
 
@@ -1489,6 +1521,8 @@ def adapter_for_name(name: str, limit: int) -> Any:
         return CityVancouverBusinessLicencesAdapter(limit=limit)
     if name in {"manual_seed", ManualRecoverySeedAdapter.name}:
         return ManualRecoverySeedAdapter(limit=limit)
+    if name in {"municipal_facilities", MunicipalFacilitiesAdapter.name}:
+        return MunicipalFacilitiesAdapter(limit=limit)
     if name in {"osm", "osm_overpass", OsmOverpassAdapter.name}:
         return OsmOverpassAdapter(limit=limit)
     if name in {"local_rss", RssFeedAdapter.name}:
@@ -1508,6 +1542,7 @@ def main() -> None:
             "city_vancouver_licences",
             "city_vancouver_business_licences",
             "manual_seed",
+            "municipal_facilities",
             "osm_overpass",
             "local_rss",
             "bc_gov_news_rss",
@@ -1531,7 +1566,7 @@ def main() -> None:
             "cm3",
         ],
     )
-    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--limit", type=int, default=2000)
     parser.add_argument("--people-csv", type=Path, default=None)
     args = parser.parse_args()
 
@@ -1650,6 +1685,7 @@ def run_m2_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[st
         CityVancouverBusinessLicencesAdapter(limit=limit),
         ManualRecoverySeedAdapter(limit=limit),
         OsmOverpassAdapter(limit=limit),
+        MunicipalFacilitiesAdapter(limit=limit),
     ]
     for adapter in operator_adapters:
         results[adapter.name] = _run_safely(lambda adapter=adapter: run_adapter(adapter))

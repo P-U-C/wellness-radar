@@ -23,30 +23,29 @@ class OsmOverpassAdapter:
     base_url = "https://overpass-api.de/api/interpreter"
     licence = "Open Database License"
 
-    def __init__(self, limit: int = 200, client: httpx.Client | None = None) -> None:
+    def __init__(self, limit: int = 2000, client: httpx.Client | None = None) -> None:
         self.limit = limit
         self.client = client or httpx.Client(
-            timeout=45.0,
+            timeout=90.0,
             headers={"user-agent": "wellness-radar/0.1", "accept": "application/json,*/*"},
         )
 
     def fetch(self) -> list[dict[str, Any]]:
         min_lng, min_lat, max_lng, max_lat = BC_BBOX
         bbox = f"{min_lat},{min_lng},{max_lat},{max_lng}"
-        query = f"""
-        [out:json][timeout:30];
-        (
-          nwr["leisure"~"^(sauna|fitness_centre)$"]({bbox});
-          nwr["amenity"="spa"]({bbox});
-          nwr["shop"="massage"]({bbox});
-          nwr["healthcare"~"^(physiotherapist|alternative|massage)$"]({bbox});
-        );
-        out center {self.limit};
-        """
-        response = self.client.post(self.base_url, data={"data": query})
-        response.raise_for_status()
-        payload = response.json()
-        return list(payload.get("elements", []))[: self.limit]
+        elements_by_id: dict[str, dict[str, Any]] = {}
+        for selector_group in _OVERPASS_SELECTOR_GROUPS:
+            query = _query_for_selectors(selector_group, bbox=bbox, limit=self.limit)
+            response = self.client.post(self.base_url, data={"data": query})
+            response.raise_for_status()
+            payload = response.json()
+            for element in payload.get("elements", []):
+                if not isinstance(element, dict):
+                    continue
+                elements_by_id[self.source_record_id(element)] = element
+                if len(elements_by_id) >= self.limit:
+                    return list(elements_by_id.values())[: self.limit]
+        return list(elements_by_id.values())[: self.limit]
 
     def source_record_id(self, raw: dict[str, Any]) -> str:
         return f"{raw.get('type', 'unknown')}/{raw.get('id', '')}"
@@ -205,3 +204,33 @@ def _first_tag(tags: dict[str, Any], *keys: str) -> Any:
         if value is not None and str(value).strip():
             return value
     return None
+
+
+_OVERPASS_SELECTOR_GROUPS: tuple[tuple[str, ...], ...] = (
+    (
+        'nwr["sport"]',
+    ),
+    (
+        'nwr["leisure"~"^(sauna|fitness_centre|fitness_station|sports_centre|sports_hall|pitch|track|swimming_pool|ice_rink|dance|stadium)$"]',
+        'nwr["amenity"~"^(gym|spa)$"]',
+        'nwr["shop"="massage"]',
+        'nwr["healthcare"~"^(physiotherapist|alternative|massage)$"]',
+    ),
+    (
+        'nwr["sauna"]',
+        'nwr["bath:type"~"sauna|steam|thermal|hot_spring"]',
+        'nwr["massage"]',
+        'nwr["spa"]',
+    ),
+)
+
+
+def _query_for_selectors(selectors: tuple[str, ...], *, bbox: str, limit: int) -> str:
+    lines = "\n".join(f"          {selector}({bbox});" for selector in selectors)
+    return f"""
+        [out:json][timeout:90];
+        (
+{lines}
+        );
+        out center {limit};
+        """

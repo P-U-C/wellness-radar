@@ -25,6 +25,30 @@ def test_bundle_synthesis_is_data_driven_and_links_people() -> None:
         ),
         _operator("op_tality", "Tality Wellness", ["community_social_wellness"]),
         _operator("op_strength", "Iron Lab Strength", ["fitness_movement"]),
+        _operator(
+            "op_pickleball",
+            "Creekside Pickleball Courts",
+            ["racquet_court_sports", "public_recreation"],
+            raw_payloads=[{"tags": {"sport": "pickleball"}}],
+        ),
+        _operator(
+            "op_climbing",
+            "North Shore Climbing Centre",
+            ["climbing"],
+            raw_payloads=[{"tags": {"sport": "climbing"}}],
+        ),
+        _operator(
+            "op_boxing",
+            "Gastown Boxing Club",
+            ["combat_sports"],
+            raw_payloads=[{"tags": {"sport": "boxing"}}],
+        ),
+        _operator(
+            "op_pool",
+            "Hillcrest Aquatic Centre",
+            ["aquatics", "public_recreation"],
+            raw_payloads=[{"tags": {"leisure": "swimming_pool"}}],
+        ),
         _operator("op_pilates", "Eastside Reformer Pilates", ["fitness_movement"]),
         _operator("op_longevity", "Longevity IV Lounge", ["nutrition_longevity"]),
         _operator(
@@ -72,6 +96,10 @@ def test_bundle_synthesis_is_data_driven_and_links_people() -> None:
     assert len(bundles) >= 4
     assert "Cold plunge & contrast therapy" in labels
     assert "Boutique strength" in labels
+    assert "Pickleball & court sports" in labels
+    assert "Climbing & bouldering" in labels
+    assert "Combat & martial arts" in labels
+    assert "Aquatics & ice rinks" in labels
     assert "Yoga & pilates" in labels
     assert "Longevity / IV" in labels
 

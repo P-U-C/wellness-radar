@@ -7,6 +7,13 @@ from typing import Any
 CATEGORIES = [
     "recovery_contrast_therapy",
     "fitness_movement",
+    "racquet_court_sports",
+    "climbing",
+    "combat_sports",
+    "aquatics",
+    "ice_sports",
+    "field_track_sports",
+    "public_recreation",
     "mind_meditation",
     "spa_thermal",
     "nutrition_longevity",
