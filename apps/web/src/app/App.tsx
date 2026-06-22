@@ -1,18 +1,18 @@
 import { Hexagon, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LayerToggle, RangeSlider } from "../components";
-import { EntityDrawer } from "../features/entities/EntityDrawer";
 import { OperatorDetail } from "../features/entities/OperatorDetail";
 import { OpportunityPanel } from "../features/analytics/OpportunityPanel";
-import { TodayBriefPanel } from "../features/brief/TodayBriefPanel";
+import { BundleDetailPanel, BundleRail } from "../features/bundles/BundleHomePanels";
 import { SignalFeed } from "../features/feed/SignalFeed";
 import { PeopleGraph } from "../features/graph/PeopleGraph";
 import { KioskMode } from "../features/kiosk/KioskMode";
-import { OperatorMap, type MapLayers } from "../features/map/OperatorMap";
+import { OperatorMap } from "../features/map/OperatorMap";
 import { PeopleLeaderboard } from "../features/people/PeopleLeaderboard";
 import { SearchScreen } from "../features/search/SearchScreen";
 import { SystemScreen } from "../features/system/SystemScreen";
 import {
+  fetchBundle,
+  fetchBundles,
   fetchCategoryVelocity,
   fetchDailyBrief,
   fetchObservability,
@@ -26,6 +26,8 @@ import {
   fetchSourceRuns,
   fetchTrends,
   fetchWhitespace,
+  type BundleDetail,
+  type BundleSummary,
   type CategoryVelocity,
   type DailyBrief,
   type GraphEdge,
@@ -78,6 +80,8 @@ export function App() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [sourceRuns, setSourceRuns] = useState<SourceRun[]>([]);
   const [sourceFreshness, setSourceFreshness] = useState<SourceFreshness[]>([]);
+  const [bundles, setBundles] = useState<BundleSummary[]>([]);
+  const [bundleDetails, setBundleDetails] = useState<Record<string, BundleDetail>>({});
   const [people, setPeople] = useState<Person[]>([]);
   const [heatmapCells, setHeatmapCells] = useState<OpportunityHeatmapCell[]>([]);
   const [scorecards, setScorecards] = useState<OpportunityScorecard[]>([]);
@@ -91,22 +95,19 @@ export function App() {
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
   const [opportunityGeoLevel, setOpportunityGeoLevel] = useState<"CSD" | "neighborhood">("neighborhood");
   const [peopleSort] = useState("influence");
   const [minConfidence, setMinConfidence] = useState(0.6);
   const [minOpportunity, setMinOpportunity] = useState(0.55);
-  const [layers, setLayers] = useState<MapLayers>({
-    operators: true,
-    signals: true,
-    people: false,
-    opportunity: true
-  });
   const [trustFilter, setTrustFilter] = useState("all");
   const [signalTypeFilter, setSignalTypeFilter] = useState("all");
   const [route, setRoute] = useState<RouteState>(() => routeFromPath(window.location.pathname));
   const [clock, setClock] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
+  const [bundleLoading, setBundleLoading] = useState(false);
+  const [bundleError, setBundleError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const screen = route.screen;
@@ -121,6 +122,7 @@ export function App() {
         signalData,
         runData,
         freshnessData,
+        bundleData,
         peopleData,
         heatmapData,
         scorecardData,
@@ -135,6 +137,7 @@ export function App() {
         fetchSignals(),
         fetchSourceRuns(),
         fetchSourceFreshness(),
+        fetchBundles(),
         fetchPeople(peopleSort),
         fetchWhitespace(analyticsCategory, opportunityGeoLevel),
         fetchOpportunityScorecards(analyticsCategory, opportunityGeoLevel),
@@ -149,6 +152,7 @@ export function App() {
       setSignals(signalData);
       setSourceRuns(runData);
       setSourceFreshness(freshnessData);
+      setBundles(bundleData.filter((bundle) => bundle.source_refs.length > 0));
       setPeople(peopleData);
       setHeatmapCells(heatmapData);
       setScorecards(scorecardData);
@@ -169,6 +173,65 @@ export function App() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (bundles.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      bundles
+        .filter((bundle) => !bundleDetails[bundle.id])
+        .map((bundle) => fetchBundle(bundle.id).catch(() => null))
+    ).then((details) => {
+      if (cancelled) {
+        return;
+      }
+      setBundleDetails((current) => {
+        const next = { ...current };
+        for (const detail of details) {
+          if (detail && detail.source_refs.length > 0) {
+            next[detail.id] = detail;
+          }
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bundles]);
+
+  useEffect(() => {
+    if (!selectedBundleId || bundleDetails[selectedBundleId]) {
+      setBundleLoading(false);
+      setBundleError(null);
+      return;
+    }
+    let cancelled = false;
+    setBundleLoading(true);
+    setBundleError(null);
+    void fetchBundle(selectedBundleId)
+      .then((detail) => {
+        if (cancelled || !detail || detail.source_refs.length === 0) {
+          return;
+        }
+        setBundleDetails((current) => ({ ...current, [detail.id]: detail }));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setBundleError(err instanceof Error ? err.message : "Unable to load bundle");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBundleLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bundleDetails, selectedBundleId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 30_000);
@@ -230,6 +293,31 @@ export function App() {
           (category === "all" || operator.categories.includes(category))
       ),
     [operators, category, minConfidence]
+  );
+  const sourceBackedOperators = useMemo(
+    () => operators.filter((operator) => operator.source_refs.length > 0),
+    [operators]
+  );
+  const mappedOperators = useMemo(
+    () => sourceBackedOperators.filter((operator) => isInBcBounds(operator.lat, operator.lng)),
+    [sourceBackedOperators]
+  );
+  const omittedOperatorCount = sourceBackedOperators.length - mappedOperators.length;
+  const selectedBundle = selectedBundleId
+    ? bundles.find((bundle) => bundle.id === selectedBundleId) ?? null
+    : null;
+  const selectedBundleDetail = selectedBundleId ? bundleDetails[selectedBundleId] ?? null : null;
+  const selectedBundleOperators = useMemo(
+    () =>
+      selectedBundleDetail?.members
+        .filter((operator) => operator.source_refs.length > 0)
+        .filter((operator) => isInBcBounds(operator.lat, operator.lng)) ?? [],
+    [selectedBundleDetail]
+  );
+  const homeMapOperators = selectedBundleId ? selectedBundleOperators : mappedOperators;
+  const homeMapLayers = useMemo(
+    () => ({ operators: true, signals: false, people: false, opportunity: false }),
+    []
   );
 
   const visibleHeatmapCells = useMemo(
@@ -351,6 +439,18 @@ export function App() {
     }
   }, []);
 
+  const onSelectBundle = useCallback((bundleId: string) => {
+    setSelectedBundleId(bundleId);
+    setSelectedOperatorId(null);
+    setSelectedSignalId(null);
+  }, []);
+
+  const onClearBundle = useCallback(() => {
+    setSelectedBundleId(null);
+    setSelectedOperatorId(null);
+    setSelectedSignalId(null);
+  }, []);
+
   const openOperator = useCallback(
     (operatorId: string) => {
       setSelectedOperatorId(operatorId);
@@ -430,111 +530,38 @@ export function App() {
       <section className="wr-screen-area">
         {screen === "console" ? (
           <div className="wr-console">
-            <div className="wr-console-main">
-              <aside className="wr-console-rail">
-                <section>
-                  <h2>LAYERS</h2>
-                  <div className="wr-layer-stack">
-                    <LayerToggle
-                      type="operator"
-                      label="Operators"
-                      count={visibleOperators.length}
-                      on={layers.operators}
-                      onToggle={() => setLayers((current) => ({ ...current, operators: !current.operators }))}
-                    />
-                    <LayerToggle
-                      type="signal"
-                      label="Signals"
-                      count={visibleSignals.length}
-                      on={layers.signals}
-                      onToggle={() => setLayers((current) => ({ ...current, signals: !current.signals }))}
-                    />
-                    <LayerToggle
-                      type="people"
-                      label="People"
-                      count={layers.people ? people.length : "off"}
-                      on={layers.people}
-                      onToggle={() => setLayers((current) => ({ ...current, people: !current.people }))}
-                    />
-                    <LayerToggle
-                      type="opportunity"
-                      label="Opportunity"
-                      count={layers.opportunity ? "hexbin" : "off"}
-                      on={layers.opportunity}
-                      onToggle={() => setLayers((current) => ({ ...current, opportunity: !current.opportunity }))}
-                    />
-                  </div>
-                </section>
-
-                <section>
-                  <h2>CATEGORY</h2>
-                  <div className="wr-category-chips">
-                    {CATEGORIES.map((item) => (
-                      <button
-                        key={item.value}
-                        className={item.value === category ? "is-active" : ""}
-                        type="button"
-                        onClick={() => setCategory(item.value)}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                <RangeSlider label="OPPORTUNITY >=" value={minOpportunity} onChange={setMinOpportunity} />
-                <RangeSlider label="MIN CONFIDENCE" value={minConfidence} color="ok" onChange={setMinConfidence} />
-
-                <VelocityCard velocity={velocityItem} />
-                <FreshnessCard sources={sourceFreshness} latestRun={latestRun} firingAlertCount={firingAlertCount} />
-              </aside>
-
-              <div className="wr-console-map">
-                <OperatorMap
-                  operators={visibleOperators}
-                  heatmapCells={visibleHeatmapCells}
-                  signals={visibleSignals}
-                  selectedOperatorId={selectedOperatorId}
-                  selectedSignalId={selectedSignalId}
-                  layers={layers}
-                  onSelectOperator={onSelectOperator}
-                  onSelectSignal={(signalId) => {
-                    const signal = visibleSignals.find((item) => item.id === signalId);
-                    if (signal) {
-                      onSelectSignal(signal);
-                    }
-                  }}
-                />
-                <EntityDrawer
-                  operator={selectedOperator}
-                  signals={selectedOperatorSignals}
-                  nearbyOperators={nearbyOperators}
-                  supplyCount={supplyCount}
-                  opportunityScore={opportunityScore}
-                  velocityLabel={velocityLabel}
-                  onClose={() => {
-                    setSelectedOperatorId(null);
-                    setSelectedSignalId(null);
-                  }}
-                  onOpenOperator={openOperator}
-                />
-              </div>
-              <TodayBriefPanel brief={brief} loading={loading} error={error} />
-            </div>
-
-            <SignalFeed
-              loading={loading}
-              error={error}
-              signals={feedSignals}
-              operators={visibleOperators}
-              selectedOperatorId={selectedOperatorId}
-              selectedSignalId={selectedSignalId}
-              onSelectSignal={onSelectSignal}
-              onClearSelection={() => {
-                setSelectedOperatorId(null);
-                setSelectedSignalId(null);
-              }}
-              onViewAll={() => navigate("/signals")}
+            <BundleRail
+              bundles={bundles}
+              selectedBundleId={selectedBundleId}
+              mappedPlaceCount={mappedOperators.length}
+              omittedPlaceCount={omittedOperatorCount}
+              onSelectBundle={onSelectBundle}
+              onClearBundle={onClearBundle}
+            />
+            <section className="wr-console-map" aria-label="Places map">
+              <OperatorMap
+                operators={homeMapOperators}
+                heatmapCells={[]}
+                signals={[]}
+                selectedOperatorId={selectedOperatorId}
+                selectedSignalId={null}
+                layers={homeMapLayers}
+                activeBundleLabel={selectedBundle?.label ?? null}
+                fitKey={selectedBundleId ?? "all"}
+                onSelectOperator={onSelectOperator}
+                onClearOperator={() => {
+                  setSelectedOperatorId(null);
+                  setSelectedSignalId(null);
+                }}
+              />
+            </section>
+            <BundleDetailPanel
+              bundle={selectedBundle}
+              detail={selectedBundleDetail}
+              loading={bundleLoading}
+              error={bundleError}
+              mappedPlaceCount={mappedOperators.length}
+              omittedPlaceCount={omittedOperatorCount}
             />
           </div>
         ) : screen === "operator" ? (
