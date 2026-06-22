@@ -17,6 +17,7 @@ const baseOperator: Operator = {
   neighborhood: null,
   lat: 49.2827,
   lng: -123.1207,
+  contacts: [],
   confidence_score: 0.9,
   source_refs: []
 };

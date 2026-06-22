@@ -596,6 +596,7 @@ export function App() {
               scorecards={visibleScorecards}
               heatmapCells={visibleHeatmapCells}
               velocity={velocity}
+              operators={visibleOperators}
               trends={trends}
             />
           </div>

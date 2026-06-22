@@ -1129,7 +1129,7 @@ select:focus-visible {
 
 .wr-inspector-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1204,6 +1204,23 @@ select:focus-visible {
   margin: 2px 0 0;
   color: var(--wr-muted);
   font: 500 10px/1.3 var(--wr-font-mono);
+}
+
+.wr-related-signals a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.wr-contact-mini article > span {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  margin-top: 0;
+  border: 1px solid var(--wr-line-2);
+  border-radius: var(--wr-r-sm);
+  background: var(--wr-raised);
+  color: var(--wr-operator);
 }
 
 .wr-feed-strip {
@@ -2591,7 +2608,7 @@ select:focus-visible {
 
 .wr-metric-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -2817,6 +2834,7 @@ select:focus-visible {
   font: 700 10px/1 var(--wr-font-mono);
 }
 
+.wr-contact-card,
 .wr-provenance-drawer,
 .wr-attributes {
   padding: 18px;
@@ -2844,6 +2862,68 @@ select:focus-visible {
   display: grid;
   gap: 9px;
   margin-bottom: 14px;
+}
+
+.wr-contact-list {
+  display: grid;
+  gap: 9px;
+}
+
+.wr-contact-list p {
+  margin: 0;
+  color: var(--wr-muted);
+  font: 500 12px/1.4 var(--wr-font-ui);
+}
+
+.wr-contact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid var(--wr-line-2);
+  border-radius: 9px;
+  background: var(--wr-raised);
+}
+
+.wr-contact-row > a:first-child {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--wr-text);
+  text-decoration: none;
+}
+
+.wr-contact-row svg {
+  flex: none;
+  color: var(--wr-operator);
+}
+
+.wr-contact-row span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.wr-contact-row strong {
+  color: var(--wr-muted);
+  font: 600 9px/1 var(--wr-font-mono);
+  text-transform: uppercase;
+}
+
+.wr-contact-row b {
+  overflow: hidden;
+  color: var(--wr-text);
+  font: 600 12px/1.2 var(--wr-font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wr-contact-source {
+  color: var(--wr-operator);
+  font: 600 10px/1 var(--wr-font-mono);
+  text-decoration: none;
 }
 
 .wr-source-card {

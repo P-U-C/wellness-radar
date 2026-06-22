@@ -1,6 +1,6 @@
-import { Download, MapPin } from "lucide-react";
+import { AtSign, Download, Globe2, Mail, MapPin, Phone } from "lucide-react";
 import { ConfidenceBar, EntityBadge, SourceChip } from "../../components";
-import type { CategoryVelocity, Operator, OpportunityHeatmapCell, Signal, SourceRef } from "../../lib/api";
+import type { CategoryVelocity, ContactMethod, Operator, OpportunityHeatmapCell, Signal, SourceRef } from "../../lib/api";
 import { formatAgeFromHours, formatScore, sentenceCase } from "../../lib/format";
 import { colorForSignalType, colorForTrustTier, magma } from "../../lib/theme";
 import { OperatorMap } from "../map/OperatorMap";
@@ -45,6 +45,7 @@ export function OperatorDetail({
   const nearbyOperators = nearestOperators(operator, operators).slice(0, 5);
   const miniOperators = [operator, ...nearbyOperators];
   const categoryLabel = operator.categories[0] ? sentenceCase(operator.categories[0]) : "Wellness";
+  const contacts = operator.contacts ?? [];
 
   return (
     <div className="wr-operator-detail">
@@ -82,6 +83,7 @@ export function OperatorDetail({
         />
         <Metric label="Category velocity / 90d" value={velocityLabel} tone="signal" />
         <Metric label={`Rank in ${categoryLabel}`} value={rank ? `#${rank}` : "n/a"} />
+        <Metric label="Reachable contacts" value={String(contacts.length)} tone="signal" />
         <Metric label="Record confidence" value={formatScore(operator.confidence_score)} tone="magma" />
       </section>
 
@@ -148,6 +150,19 @@ export function OperatorDetail({
         </div>
 
         <aside className="wr-detail-right">
+          <section className="wr-detail-card wr-contact-card">
+            <div className="wr-detail-card-head">
+              <h2>PUBLIC CONTACTS</h2>
+              <span>{contacts.length} SOURCE-BACKED</span>
+            </div>
+            <div className="wr-contact-list">
+              {contacts.map((contact) => (
+                <ContactRow key={`${contact.type}-${contact.platform ?? ""}-${contact.value}`} contact={contact} />
+              ))}
+              {contacts.length === 0 ? <p>No source-backed public contact method on this operator yet.</p> : null}
+            </div>
+          </section>
+
           <section className="wr-detail-card wr-provenance-drawer">
             <div className="wr-detail-card-head">
               <h2>PROVENANCE</h2>
@@ -193,6 +208,53 @@ export function OperatorDetail({
       </div>
     </div>
   );
+}
+
+function ContactRow({ contact }: { contact: ContactMethod }) {
+  const href = contactHref(contact);
+  const icon = contactIcon(contact);
+  const label = contact.platform ? `${contact.type} / ${contact.platform}` : contact.type;
+  return (
+    <article className="wr-contact-row">
+      <a href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">
+        {icon}
+        <span>
+          <strong>{sentenceCase(label)}</strong>
+          <b>{contact.value}</b>
+        </span>
+      </a>
+      {contact.source_ref.url ? (
+        <a className="wr-contact-source" href={contact.source_ref.url} target="_blank" rel="noreferrer">
+          source
+        </a>
+      ) : (
+        <span className="wr-contact-source">{contact.source_ref.source_name}</span>
+      )}
+    </article>
+  );
+}
+
+function contactIcon(contact: ContactMethod) {
+  if (contact.type === "phone") {
+    return <Phone size={15} />;
+  }
+  if (contact.type === "email") {
+    return <Mail size={15} />;
+  }
+  if (contact.type === "social") {
+    return <AtSign size={15} />;
+  }
+  return <Globe2 size={15} />;
+}
+
+function contactHref(contact: ContactMethod): string {
+  if (contact.type === "phone") {
+    return `tel:${contact.value.replace(/[^0-9+]/g, "")}`;
+  }
+  if (contact.type === "email") {
+    return `mailto:${contact.value}`;
+  }
+  return contact.value;
 }
 
 function Metric({
