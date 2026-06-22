@@ -53,3 +53,70 @@ class SignalItem(BaseModel):
 class SignalsResponse(BaseModel):
     items: list[SignalItem]
     meta: PageMeta
+
+
+class BundleSummaryItem(BaseModel):
+    id: str
+    label: str
+    slug: str
+    bundle_score: float
+    score: float
+    components: dict[str, Any]
+    geography: dict[str, Any]
+    member_count: int
+    supporting_signals: list[dict[str, Any]]
+    source_refs: list[dict[str, Any]]
+    confidence_score: float
+    generated_at: str
+    freshness_at: str
+    freshness_age_hours: float | None
+
+
+class BundleMemberItem(BaseModel):
+    id: str
+    name: str
+    categories: list[str]
+    status: str
+    address: str | None
+    municipality: str | None
+    neighborhood: str | None
+    lat: float
+    lng: float
+    phone: str | None = None
+    website: str | None = None
+    social_links: dict[str, Any]
+    contacts: list[dict[str, Any]]
+    organization_id: str | None = None
+    orgbook_id: str | None = None
+    match_reasons: dict[str, Any]
+    membership_confidence_score: float
+    confidence_score: float
+    source_refs: list[dict[str, Any]]
+    freshness_at: str | None
+    freshness_age_hours: float | None
+
+
+class BundlePersonItem(BaseModel):
+    id: str
+    name: str
+    roles: list[str]
+    primary_role: str | None
+    primary_affiliation: str | None
+    rank: int
+    influence_score: float | None
+    why_appears: str
+    public_profiles: dict[str, Any]
+    confidence_score: float
+    source_refs: list[dict[str, Any]]
+    freshness_at: str | None
+    freshness_age_hours: float | None
+
+
+class BundlesResponse(BaseModel):
+    items: list[BundleSummaryItem]
+    meta: dict[str, Any]
+
+
+class BundleDetailResponse(BundleSummaryItem):
+    members: list[BundleMemberItem]
+    top_people: list[BundlePersonItem]
