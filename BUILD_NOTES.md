@@ -98,6 +98,58 @@ Results:
 
 Milestone 2 should add the next source adapters only after source-rights review, then extend freshness monitoring and admin UI around source runs/rejections.
 
+## COVERAGE
+
+Date: 2026-06-22 UTC
+
+### Coverage Proof
+
+- Pre-coverage operator count in the app DB: 148.
+- After broadened OSM plus municipal facilities: 1,814 operators.
+- Broadened OSM run: fetched 2,000, persisted 529, rejected 0, errors 0.
+- Municipal facilities run: fetched 1,260, persisted 1,256, rejected 3, errors 0. Rejections were `coordinates outside Metro Vancouver bbox`.
+- Bundle synthesis after coverage: fetched 2,871 inputs, persisted 2,747 bundle/member/person rows.
+
+### New Category Counts
+
+- `public_recreation`: 1,297
+- `field_track_sports`: 683
+- `racquet_court_sports`: 264
+- `ice_sports`: 97
+- `aquatics`: 72
+- `climbing`: 70
+- `combat_sports`: 40
+
+### Type Evidence
+
+- Pickleball-backed operators: 32
+- Tennis-backed operators: 114
+- Climbing-backed operators: 69
+- Boxing/martial arts-backed operators: 39
+- Yoga/pilates-backed operators: 66
+- Swimming/pool-backed operators: 76
+- Ice rink/skating/hockey-backed operators: 103
+
+### Municipal Coverage
+
+- Vancouver: 810 operators
+- Surrey: 413 operators
+- West Vancouver: 83 operators
+- Burnaby: 53 operators
+
+West Vancouver examples now present: Aspen Park, Batchelor Bay Park, Butterfly Park, Caulfeild Green, Caulfeild Park, Clovelly Walk, Cypress Falls Park, Cypress Trails Park.
+
+### Bundle Coverage
+
+- Public recreation courts & fields: 1,423 members
+- Pickleball & court sports: 264 members
+- Aquatics & ice rinks: 166 members
+- Yoga & pilates: 71 members
+- Climbing & bouldering: 70 members
+- Combat & martial arts: 41 members
+
+Completeness checks after ingest: 0 operators missing `source_refs`, 0 source events missing `source_refs`, and 0 signals missing `source_refs`. Source registry rows with `rights_notes` exist for `municipal_facilities`, West Vancouver, Vancouver, Surrey, Burnaby, Richmond (`needs_review`), North Vancouver (`needs_review`), and OSM. Richmond and North Vancouver are registered but skipped until clean fetch endpoints are adopted.
+
 ## M2
 
 Date: 2026-06-18 UTC

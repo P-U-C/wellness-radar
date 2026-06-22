@@ -1,0 +1,24 @@
+{
+  "records": [
+    {
+      "OBJECTID": 4,
+      "INVENTORY_": 99,
+      "PARK_NAME": "Tantalus Park",
+      "ADDRESS": "Lots 12, 13, 14, 16, 17, 18, 19",
+      "Data_Title": "West Vancouver Parks",
+      "Description": "Park Polygon defined by the legal boundaries of West Vancouvers dedicated and/or protected park land.",
+      "Data_Source": "District of West Vancouver",
+      "Date_of_Publication": "2020-11-17",
+      "Date_Updated": "2021-03-12",
+      "Point_of_Contact": "District of West Vancouver",
+      "More_Information": "https://mapping.westvancouver.ca/OD/dbo_OPENDATA_FILES_list.php",
+      "Metadata": "http://soggy.zoology.ubc.ca:8080/geonetwork/srv/eng/catalog.search#/metadata/6e1749a6-b45e-4153-9d1a-631f49d293c6",
+      "MAP_NAME": "Tantalus",
+      "AREA_HA": 0.8249254,
+      "_geometry": {
+        "type": "Point",
+        "coordinates": [-123.27672405764307, 49.370490250153765]
+      }
+    }
+  ]
+}

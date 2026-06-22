@@ -14,7 +14,7 @@ from apps.api.app.services.freshness import age_hours, iso_or_none
 from apps.api.app.services.metrics import runtime_metrics
 
 router = APIRouter(tags=["operators"])
-MAX_OPERATOR_LIMIT = 1000
+MAX_OPERATOR_LIMIT = 5000
 MAX_LEADS_LIMIT = 500
 
 
