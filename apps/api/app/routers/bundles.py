@@ -11,12 +11,17 @@ from packages.schemas.api import BundleDetailResponse, BundlesResponse
 
 router = APIRouter(tags=["bundles"])
 MAX_BUNDLE_LIMIT = 100
+BundleVenueClassFilter = Literal[
+    "commercial_wellness", "public_recreation", "unknown", "all"
+]
+BUNDLE_VENUE_CLASS_QUERY = Query(default="commercial_wellness")
 
 
 @router.get("/bundles", response_model=BundlesResponse)
 def list_bundles(
     municipality: str | None = Query(default=None),
     geo_level: Literal["CSD", "neighborhood"] | None = Query(default=None),
+    venue_class: BundleVenueClassFilter = BUNDLE_VENUE_CLASS_QUERY,
     limit: int = Query(default=50, ge=1),
 ) -> dict[str, Any]:
     active_limit = min(limit, MAX_BUNDLE_LIMIT)
@@ -49,6 +54,9 @@ def list_bundles(
             """
         )
         params.append(geo_level)
+    if venue_class != "all":
+        clauses.append("b.venue_class = %s")
+        params.append(venue_class)
     params.append(active_limit)
     with get_connection() as conn:
         rows = cast(
@@ -59,6 +67,7 @@ def list_bundles(
                   b.id,
                   b.label,
                   b.slug,
+                  b.venue_class,
                   b.bundle_score,
                   b.components,
                   b.geography,
@@ -69,7 +78,14 @@ def list_bundles(
                   b.generated_at
                 FROM bundle b
                 WHERE {' AND '.join(clauses)}
-                ORDER BY b.bundle_score DESC, b.label ASC
+                ORDER BY
+                  CASE b.venue_class
+                    WHEN 'commercial_wellness' THEN 0
+                    WHEN 'public_recreation' THEN 1
+                    ELSE 2
+                  END,
+                  b.bundle_score DESC,
+                  b.label ASC
                 LIMIT %s
                 """,
                 params,
@@ -84,6 +100,7 @@ def list_bundles(
             "max_limit": MAX_BUNDLE_LIMIT,
             "municipality": municipality,
             "geo_level": geo_level,
+            "venue_class": venue_class,
         },
     }
 
@@ -99,6 +116,7 @@ def get_bundle(bundle_id: str) -> dict[str, Any]:
                   id,
                   label,
                   slug,
+                  venue_class,
                   bundle_score,
                   components,
                   geography,
@@ -124,6 +142,7 @@ def get_bundle(bundle_id: str) -> dict[str, Any]:
                   op.id,
                   op.name,
                   op.categories,
+                  op.venue_class,
                   op.status::text AS status,
                   op.address,
                   op.municipality,
@@ -191,6 +210,7 @@ def _bundle_summary(row: dict[str, Any]) -> dict[str, Any]:
         "id": row["id"],
         "label": row["label"],
         "slug": row["slug"],
+        "venue_class": row["venue_class"],
         "bundle_score": float(row["bundle_score"]),
         "score": float(row["bundle_score"]),
         "components": row["components"],
@@ -216,6 +236,7 @@ def _member_item(row: dict[str, Any]) -> dict[str, Any]:
         "id": row["id"],
         "name": row["name"],
         "categories": row["categories"],
+        "venue_class": row["venue_class"],
         "status": row["status"],
         "address": row["address"],
         "municipality": row["municipality"],

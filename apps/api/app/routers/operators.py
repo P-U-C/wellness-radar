@@ -16,6 +16,8 @@ from apps.api.app.services.metrics import runtime_metrics
 router = APIRouter(tags=["operators"])
 MAX_OPERATOR_LIMIT = 5000
 MAX_LEADS_LIMIT = 500
+VenueClassFilter = Literal["commercial_wellness", "public_recreation", "unknown", "all"]
+VENUE_CLASS_QUERY = Query(default="all")
 
 
 def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -23,6 +25,7 @@ def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
         "id": row["id"],
         "name": row["name"],
         "categories": row["categories"],
+        "venue_class": row["venue_class"],
         "status": row["status"],
         "address": row["address"],
         "municipality": row["municipality"],
@@ -53,6 +56,7 @@ def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
 def list_operators(
     bbox: str | None = Query(default=None),
     category: str | None = Query(default=None),
+    venue_class: VenueClassFilter = VENUE_CLASS_QUERY,
     status: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1),
 ) -> dict[str, Any]:
@@ -76,6 +80,9 @@ def list_operators(
     if category:
         clauses.append("%s = ANY(op.categories)")
         params.append(category)
+    if venue_class != "all":
+        clauses.append("op.venue_class = %s")
+        params.append(venue_class)
     if status:
         clauses.append("op.status = %s::operator_status")
         params.append(status)
@@ -86,6 +93,7 @@ def list_operators(
         op.id,
         op.name,
         op.categories,
+        op.venue_class,
         op.status::text AS status,
         op.address,
         op.municipality,
@@ -146,6 +154,7 @@ def list_operators(
             "limit": active_limit,
             "requested_limit": limit,
             "max_limit": MAX_OPERATOR_LIMIT,
+            "venue_class": venue_class,
             "contact_coverage": {
                 "operator_count": total,
                 "with_contact_count": with_contact,
@@ -166,6 +175,7 @@ def get_operator(operator_id: str) -> dict[str, Any]:
                   op.id,
                   op.name,
                   op.categories,
+                  op.venue_class,
                   op.status::text AS status,
                   op.address,
                   op.municipality,
@@ -283,6 +293,7 @@ def list_leads(
                   op.id,
                   op.name,
                   op.categories,
+                  op.venue_class,
                   op.status::text AS status,
                   op.address,
                   op.municipality,

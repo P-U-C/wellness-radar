@@ -150,6 +150,104 @@ West Vancouver examples now present: Aspen Park, Batchelor Bay Park, Butterfly P
 
 Completeness checks after ingest: 0 operators missing `source_refs`, 0 source events missing `source_refs`, and 0 signals missing `source_refs`. Source registry rows with `rights_notes` exist for `municipal_facilities`, West Vancouver, Vancouver, Surrey, Burnaby, Richmond (`needs_review`), North Vancouver (`needs_review`), and OSM. Richmond and North Vancouver are registered but skipped until clean fetch endpoints are adopted.
 
+## ONTOLOGY
+
+Date: 2026-06-22 UTC
+
+### Venue Class Counts
+
+After applying `015_venue_class.sql` and rerunning `bundle_synthesis`:
+
+- `commercial_wellness`: 378 operators
+- `public_recreation`: 1,436 operators
+- missing `venue_class`: 0 operators
+- missing operator `source_refs`: 0 operators
+
+### Commercial Bundle Ranking
+
+`GET /bundles` now defaults to `venue_class=commercial_wellness`; public recreation bundles are not mixed into the headline ranking.
+
+| Rank | Bundle | Class | Members | Score |
+| --- | --- | --- | ---: | ---: |
+| 1 | Boutique strength | commercial_wellness | 184 | 0.7137 |
+| 2 | Allied health & bodywork | commercial_wellness | 89 | 0.7056 |
+| 3 | Yoga & pilates | commercial_wellness | 71 | 0.6916 |
+| 4 | Mind & breathwork | commercial_wellness | 68 | 0.6915 |
+| 5 | Longevity / IV | commercial_wellness | 61 | 0.6849 |
+| 6 | Climbing & bouldering | commercial_wellness | 68 | 0.6839 |
+| 7 | Combat & martial arts | commercial_wellness | 40 | 0.6769 |
+| 8 | Social wellness clubs | commercial_wellness | 40 | 0.6769 |
+| 9 | Spa & thermal | commercial_wellness | 30 | 0.6711 |
+| 10 | Cold plunge & contrast therapy | commercial_wellness | 15 | 0.6530 |
+
+### API Excerpts
+
+Default `/bundles?limit=6` excerpt:
+
+```json
+{
+  "meta": {
+    "count": 6,
+    "venue_class": "commercial_wellness"
+  },
+  "items": [
+    {"label": "Boutique strength", "venue_class": "commercial_wellness", "member_count": 184, "score": 0.7137},
+    {"label": "Allied health & bodywork", "venue_class": "commercial_wellness", "member_count": 89, "score": 0.7056},
+    {"label": "Yoga & pilates", "venue_class": "commercial_wellness", "member_count": 71, "score": 0.6916},
+    {"label": "Mind & breathwork", "venue_class": "commercial_wellness", "member_count": 68, "score": 0.6915},
+    {"label": "Longevity / IV", "venue_class": "commercial_wellness", "member_count": 61, "score": 0.6849},
+    {"label": "Climbing & bouldering", "venue_class": "commercial_wellness", "member_count": 68, "score": 0.6839}
+  ]
+}
+```
+
+`/bundles?venue_class=all&limit=12` excerpt shows both groups, with public recreation separated after the commercial set:
+
+```json
+{
+  "meta": {
+    "count": 12,
+    "venue_class": "all"
+  },
+  "items": [
+    {"label": "Boutique strength", "venue_class": "commercial_wellness", "member_count": 184, "score": 0.7137},
+    {"label": "Allied health & bodywork", "venue_class": "commercial_wellness", "member_count": 89, "score": 0.7056},
+    {"label": "Yoga & pilates", "venue_class": "commercial_wellness", "member_count": 71, "score": 0.6916},
+    {"label": "Mind & breathwork", "venue_class": "commercial_wellness", "member_count": 68, "score": 0.6915},
+    {"label": "Longevity / IV", "venue_class": "commercial_wellness", "member_count": 61, "score": 0.6849},
+    {"label": "Climbing & bouldering", "venue_class": "commercial_wellness", "member_count": 68, "score": 0.6839},
+    {"label": "Combat & martial arts", "venue_class": "commercial_wellness", "member_count": 40, "score": 0.6769},
+    {"label": "Social wellness clubs", "venue_class": "commercial_wellness", "member_count": 40, "score": 0.6769},
+    {"label": "Spa & thermal", "venue_class": "commercial_wellness", "member_count": 30, "score": 0.6711},
+    {"label": "Cold plunge & contrast therapy", "venue_class": "commercial_wellness", "member_count": 15, "score": 0.6530},
+    {"label": "Public recreation courts & fields", "venue_class": "public_recreation", "member_count": 1386, "score": 0.7887},
+    {"label": "Pickleball & court sports", "venue_class": "public_recreation", "member_count": 264, "score": 0.7388}
+  ]
+}
+```
+
+### Verified Commands
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m db.migrate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar python3 -m apps.jobs.runner bundle_synthesis
+python3 -m pytest
+python3 -m ruff check .
+python3 -m mypy apps packages db
+pnpm build
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/wellness_radar_migration_check python3 -m db.migrate
+```
+
+Results:
+
+- Existing DB migration applied `015_venue_class.sql`.
+- Bundle synthesis after ontology split: fetched 4,695 inputs, persisted 4,318 rows, rejected 0, errors 0.
+- Python tests: 75 passed.
+- Ruff: passed.
+- Mypy: passed.
+- Web build: passed with the existing Vite chunk-size warning for the MapLibre bundle.
+- Clean migration check applied `001` through `015` on a temporary PostGIS database.
+
 ## M2
 
 Date: 2026-06-18 UTC

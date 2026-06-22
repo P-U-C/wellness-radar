@@ -58,10 +58,39 @@ def test_bundles_list_is_ranked_and_filterable(monkeypatch) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["meta"]["limit"] == 100
+    assert body["meta"]["venue_class"] == "commercial_wellness"
     assert body["items"][0]["label"] == "Cold plunge & contrast therapy"
+    assert body["items"][0]["venue_class"] == "commercial_wellness"
     query, params = fake_conn.queries[0]
-    assert "ORDER BY b.bundle_score DESC" in query
-    assert params == ["Vancouver", "Vancouver", "neighborhood", 100]
+    assert "CASE b.venue_class" in query
+    assert "b.venue_class = %s" in query
+    assert params == ["Vancouver", "Vancouver", "neighborhood", "commercial_wellness", 100]
+
+
+def test_bundles_list_all_venue_classes_skips_default_filter(monkeypatch) -> None:
+    fake_conn = FakeConn([[_bundle_row(), _bundle_row(venue_class="public_recreation")]])
+
+    @contextmanager
+    def fake_connection() -> Iterator[FakeConn]:
+        yield fake_conn
+
+    monkeypatch.setattr(bundles, "get_connection", fake_connection)
+    app = FastAPI()
+    app.include_router(bundles.router)
+    client = TestClient(app)
+
+    response = client.get("/bundles?venue_class=all")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["venue_class"] == "all"
+    assert {item["venue_class"] for item in body["items"]} == {
+        "commercial_wellness",
+        "public_recreation",
+    }
+    query, params = fake_conn.queries[0]
+    assert "b.venue_class = %s" not in query
+    assert params == [50]
 
 
 def test_bundle_detail_returns_members_and_top_people(monkeypatch) -> None:
@@ -86,19 +115,22 @@ def test_bundle_detail_returns_members_and_top_people(monkeypatch) -> None:
 
     assert response.status_code == 200
     body = response.json()
+    assert body["venue_class"] == "commercial_wellness"
     assert body["members"][0]["name"] == "AetherHaus"
+    assert body["members"][0]["venue_class"] == "commercial_wellness"
     assert body["members"][0]["lat"] == 49.2869
     assert body["members"][0]["contacts"][0]["contact_type"] == "website"
     assert body["top_people"][0]["why_appears"].startswith("Founder at AetherHaus")
     assert body["supporting_signals"][0]["source_refs"] == [SOURCE_REF]
 
 
-def _bundle_row() -> dict[str, Any]:
+def _bundle_row(venue_class: str = "commercial_wellness") -> dict[str, Any]:
     generated_at = datetime(2026, 6, 22, 12, 0, tzinfo=timezone.utc)
     return {
         "id": "bundle_cold_plunge_contrast_therapy",
         "label": "Cold plunge & contrast therapy",
         "slug": "cold-plunge-contrast-therapy",
+        "venue_class": venue_class,
         "bundle_score": 0.74,
         "components": {"demand_proxy": 0.9, "formula": "formula"},
         "geography": {
@@ -132,6 +164,7 @@ def _member_row() -> dict[str, Any]:
         "id": "op_aetherhaus",
         "name": "AetherHaus",
         "categories": ["recovery_contrast_therapy"],
+        "venue_class": "commercial_wellness",
         "status": "open",
         "address": "1768 Davie Street, Vancouver, BC",
         "municipality": "Vancouver",
