@@ -174,6 +174,72 @@ export type CategoryVelocity = {
   freshness_age_hours?: number | null;
 };
 
+export type BriefSectionKey =
+  | "changed_operators"
+  | "new_signals"
+  | "opportunity_movement"
+  | "new_reachable_leads";
+
+export type BriefSectionItem = {
+  id: string;
+  item_type: string;
+  title: string;
+  summary: string;
+  source_refs: SourceRef[];
+  confidence_score: number;
+  operator_id?: string;
+  signal_id?: string;
+  scorecard_id?: string;
+  name?: string;
+  categories?: string[];
+  primary_category?: string;
+  status?: string;
+  municipality?: string | null;
+  neighborhood?: string | null;
+  signal_type?: string;
+  severity?: string;
+  trust_tier?: string;
+  geo_name?: string;
+  category?: string;
+  opportunity_score?: number;
+  previous_score?: number | null;
+  delta?: number | null;
+  movement?: string;
+  contact_types?: string[];
+  contact_count?: number;
+};
+
+export type BriefAction = {
+  id: string;
+  title: string;
+  summary: string;
+  action_type: string;
+  evidence_rows: Array<{
+    section: BriefSectionKey;
+    item_id: string;
+    title: string;
+    source_refs: SourceRef[];
+  }>;
+  source_refs: SourceRef[];
+};
+
+export type DailyBrief = {
+  id: string;
+  brief_date: string;
+  generated_at: string;
+  window_start: string;
+  window_end: string;
+  status: "material_changes" | "no_material_changes" | "initial_snapshot";
+  brief_text: string;
+  sections: Record<BriefSectionKey, BriefSectionItem[]>;
+  top_actions: BriefAction[];
+  counts: Record<string, number | boolean>;
+  source_refs: SourceRef[];
+  narrative_model: string;
+  freshness_at?: string | null;
+  freshness_age_hours?: number | null;
+};
+
 export type ObservabilitySummary = {
   runtime: {
     api_requests_total: number;
@@ -347,6 +413,17 @@ export async function fetchCategoryVelocity(category: string): Promise<CategoryV
     return [];
   }
   return data.items;
+}
+
+export async function fetchDailyBrief(): Promise<DailyBrief | null> {
+  try {
+    return await getJson<DailyBrief>("/api/brief");
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("404 ")) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function fetchTrends(): Promise<TrendTile[]> {

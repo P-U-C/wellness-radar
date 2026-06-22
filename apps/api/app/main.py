@@ -12,6 +12,7 @@ from starlette.requests import Request
 from apps.api.app.routers import (
     admin,
     analytics,
+    brief,
     graph,
     health,
     metrics,
@@ -69,6 +70,7 @@ app.include_router(operators.router)
 app.include_router(signals.router)
 app.include_router(people.router)
 app.include_router(analytics.router)
+app.include_router(brief.router)
 app.include_router(trends.router)
 app.include_router(graph.router)
 app.include_router(metrics.router)
