@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from apps.jobs.analytics.bundles import synthesize_bundles
+from apps.jobs.analytics.venue_class import classify_operator_venue_class
 
 SOURCE_REF = {
     "source_name": "manual_seed",
@@ -30,6 +31,7 @@ def test_bundle_synthesis_is_data_driven_and_links_people() -> None:
             "Creekside Pickleball Courts",
             ["racquet_court_sports", "public_recreation"],
             raw_payloads=[{"tags": {"sport": "pickleball"}}],
+            venue_class="public_recreation",
         ),
         _operator(
             "op_climbing",
@@ -48,6 +50,7 @@ def test_bundle_synthesis_is_data_driven_and_links_people() -> None:
             "Hillcrest Aquatic Centre",
             ["aquatics", "public_recreation"],
             raw_payloads=[{"tags": {"leisure": "swimming_pool"}}],
+            venue_class="public_recreation",
         ),
         _operator("op_pilates", "Eastside Reformer Pilates", ["fitness_movement"]),
         _operator("op_longevity", "Longevity IV Lounge", ["nutrition_longevity"]),
@@ -105,6 +108,7 @@ def test_bundle_synthesis_is_data_driven_and_links_people() -> None:
 
     cold = next(bundle for bundle in bundles if bundle["label"] == "Cold plunge & contrast therapy")
     assert cold["member_count"] >= 1
+    assert cold["venue_class"] == "commercial_wellness"
     assert cold["components"]["formula"]
     assert 0 <= cold["bundle_score"] <= 1
     assert cold["source_refs"]
@@ -113,13 +117,61 @@ def test_bundle_synthesis_is_data_driven_and_links_people() -> None:
     assert cold["top_people"][0]["id"] == "person_a"
     assert "AetherHaus" in cold["top_people"][0]["why_appears"]
 
+    public_recreation = next(
+        bundle for bundle in bundles if bundle["label"] == "Pickleball & court sports"
+    )
+    assert public_recreation["venue_class"] == "public_recreation"
+    assert bundles.index(cold) < bundles.index(public_recreation)
+
+
+def test_operator_venue_classification_uses_source_and_tags() -> None:
+    assert (
+        classify_operator_venue_class(
+            _operator(
+                "op_license",
+                "AetherHaus",
+                ["recovery_contrast_therapy"],
+                source_name="city_vancouver_business_licences",
+            )
+        )
+        == "commercial_wellness"
+    )
+    assert (
+        classify_operator_venue_class(
+            _operator(
+                "op_pitch",
+                "Empire Fields",
+                ["field_track_sports", "public_recreation"],
+                raw_payloads=[{"tags": {"leisure": "pitch", "sport": "soccer"}}],
+                source_name="municipal_facilities",
+                venue_class="public_recreation",
+            )
+        )
+        == "public_recreation"
+    )
+    assert (
+        classify_operator_venue_class(
+            _operator(
+                "op_ambiguous",
+                "Harbour Place",
+                [],
+                venue_class="unknown",
+                source_name="osm_overpass",
+            )
+        )
+        == "unknown"
+    )
+
 
 def _operator(
     operator_id: str,
     name: str,
     categories: list[str],
     raw_payloads: list[dict] | None = None,
+    venue_class: str = "commercial_wellness",
+    source_name: str = "manual_seed",
 ) -> dict:
+    source_ref = {**SOURCE_REF, "source_name": source_name}
     return {
         "id": operator_id,
         "name": name,
@@ -127,12 +179,13 @@ def _operator(
         "organization_id": None,
         "organization_name": None,
         "categories": categories,
+        "venue_class": venue_class,
         "municipality": "Vancouver",
         "neighborhood": "Mount Pleasant",
         "lat": 49.26,
         "lng": -123.1,
         "first_seen_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
-        "source_refs": [SOURCE_REF],
+        "source_refs": [source_ref],
         "confidence_score": 0.9,
         "raw_payloads": raw_payloads or [],
     }
