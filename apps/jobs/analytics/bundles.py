@@ -10,7 +10,13 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from apps.jobs.runner import DatabaseRepository, RunMetrics
+from apps.jobs.analytics.venue_class import (
+    VENUE_CLASS_COMMERCIAL,
+    VENUE_CLASS_PUBLIC,
+    VenueClassRepository,
+    classify_operator_venue_classes,
+)
+from apps.jobs.runner import RunMetrics
 from packages.shared.ids import slugify, stable_id
 from packages.shared.normalizers import normalize_name
 
@@ -63,6 +69,7 @@ class BundleDefinition:
     category_terms: tuple[str, ...]
     keyword_terms: tuple[str, ...]
     tag_terms: tuple[str, ...]
+    venue_class: str = VENUE_CLASS_COMMERCIAL
 
 
 # Extensible taxonomy: add a BundleDefinition with category, keyword, or tag
@@ -137,6 +144,7 @@ BUNDLE_TAXONOMY: tuple[BundleDefinition, ...] = (
             "primary_use=pickle ball",
             "primary_use=tennis",
         ),
+        venue_class=VENUE_CLASS_PUBLIC,
     ),
     BundleDefinition(
         slug="climbing_bouldering",
@@ -188,6 +196,7 @@ BUNDLE_TAXONOMY: tuple[BundleDefinition, ...] = (
             "primary_use=baseball",
             "primary_use=softball",
         ),
+        venue_class=VENUE_CLASS_PUBLIC,
     ),
     BundleDefinition(
         slug="aquatics_ice_rinks",
@@ -196,6 +205,7 @@ BUNDLE_TAXONOMY: tuple[BundleDefinition, ...] = (
         category_terms=("aquatics", "ice_sports"),
         keyword_terms=("swimming", "aquatic", "pool", "ice rink", "skating", "hockey", "curling"),
         tag_terms=("leisure=swimming_pool", "leisure=ice_rink", "sport=swimming"),
+        venue_class=VENUE_CLASS_PUBLIC,
     ),
     BundleDefinition(
         slug="yoga_pilates",
@@ -269,7 +279,7 @@ BUNDLE_TAXONOMY: tuple[BundleDefinition, ...] = (
 )
 
 
-class BundleAnalyticsRepository(DatabaseRepository):
+class BundleAnalyticsRepository(VenueClassRepository):
     def operators_for_bundling(self) -> list[dict[str, Any]]:
         return list(
             self.conn.execute(
@@ -281,6 +291,7 @@ class BundleAnalyticsRepository(DatabaseRepository):
                   op.organization_id,
                   org.name AS organization_name,
                   op.categories,
+                  op.venue_class,
                   op.municipality,
                   op.neighborhood,
                   ST_Y(op.geom::geometry) AS lat,
@@ -392,6 +403,7 @@ class BundleAnalyticsRepository(DatabaseRepository):
                   id,
                   label,
                   slug,
+                  venue_class,
                   bundle_score,
                   components,
                   geography,
@@ -400,12 +412,13 @@ class BundleAnalyticsRepository(DatabaseRepository):
                   source_refs,
                   confidence_score
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     bundle["id"],
                     bundle["label"],
                     bundle["slug"],
+                    bundle["venue_class"],
                     bundle["bundle_score"],
                     Jsonb(bundle["components"]),
                     Jsonb(bundle["geography"]),
@@ -467,6 +480,7 @@ def run_bundle_synthesis(
     repo = repository or BundleAnalyticsRepository()
     metrics = RunMetrics()
     try:
+        classification_metrics = classify_operator_venue_classes(repo)
         operators = repo.operators_for_bundling()
         operator_ids = [str(operator["id"]) for operator in operators]
         geographies = repo.geographies_for_scoring()
@@ -479,9 +493,16 @@ def run_bundle_synthesis(
             people=people,
         )
         repo.replace_bundles(bundles)
-        metrics.records_fetched = len(operators) + len(geographies) + len(signals) + len(people)
+        metrics.records_fetched = (
+            classification_metrics.records_fetched
+            + len(operators)
+            + len(geographies)
+            + len(signals)
+            + len(people)
+        )
         metrics.records_persisted = (
-            len(bundles)
+            classification_metrics.records_persisted
+            + len(bundles)
             + sum(len(bundle["memberships"]) for bundle in bundles)
             + sum(len(bundle["top_people"]) for bundle in bundles)
         )
@@ -508,6 +529,7 @@ def synthesize_bundles(
         if not memberships:
             continue
         member_ids = {str(membership["operator_id"]) for membership in memberships}
+        venue_class = _predominant_venue_class(memberships, default=definition.venue_class)
         member_signals = [
             signal for signal in signals if str(signal.get("related_operator_id")) in member_ids
         ]
@@ -534,6 +556,8 @@ def synthesize_bundles(
         raw_candidates.append(
             {
                 "definition": definition,
+                "venue_class": venue_class,
+                "venue_class_counts": _venue_class_counts(memberships),
                 "memberships": memberships,
                 "member_ids": sorted(member_ids),
                 "member_count": len(memberships),
@@ -564,7 +588,11 @@ def synthesize_bundles(
     ]
     return sorted(
         bundles,
-        key=lambda bundle: (-float(bundle["bundle_score"]), str(bundle["label"]).lower()),
+        key=lambda bundle: (
+            _venue_class_sort_key(str(bundle["venue_class"])),
+            -float(bundle["bundle_score"]),
+            str(bundle["label"]).lower(),
+        ),
     )
 
 
@@ -573,6 +601,8 @@ def _memberships_for_definition(
 ) -> list[dict[str, Any]]:
     memberships: list[dict[str, Any]] = []
     for operator in operators:
+        if str(operator.get("venue_class") or "unknown") != definition.venue_class:
+            continue
         match_reasons = _match_operator(definition, operator)
         if match_reasons is None:
             continue
@@ -659,6 +689,8 @@ def _bundle_payload(
         "inputs": {
             "member_count": candidate["member_count"],
             "operator_ids": candidate["member_ids"],
+            "venue_class": candidate["venue_class"],
+            "venue_class_counts": candidate["venue_class_counts"],
             "bundle_density_per_10000_population": round(float(candidate["raw_density"]), 4),
             **candidate["momentum"],
         },
@@ -675,6 +707,7 @@ def _bundle_payload(
         "id": stable_id("bundle", definition.slug),
         "label": definition.label,
         "slug": slugify(definition.slug).replace("_", "-"),
+        "venue_class": candidate["venue_class"],
         "bundle_score": bundle_score,
         "components": components,
         "geography": candidate["geography"],
@@ -1019,6 +1052,40 @@ def _source_confidence(
     if geography["source_quality"]["fixture_backed"]:
         base *= 0.9
     return _clamp(base)
+
+
+def _predominant_venue_class(
+    memberships: Sequence[dict[str, Any]], *, default: str
+) -> str:
+    counts = Counter(
+        str(membership["operator"].get("venue_class") or "unknown")
+        for membership in memberships
+    )
+    if counts[VENUE_CLASS_COMMERCIAL] > counts[VENUE_CLASS_PUBLIC]:
+        return VENUE_CLASS_COMMERCIAL
+    if counts[VENUE_CLASS_PUBLIC] > 0:
+        return VENUE_CLASS_PUBLIC
+    return str(default or "unknown")
+
+
+def _venue_class_counts(memberships: Sequence[dict[str, Any]]) -> dict[str, int]:
+    counts = Counter(
+        str(membership["operator"].get("venue_class") or "unknown")
+        for membership in memberships
+    )
+    return {
+        VENUE_CLASS_COMMERCIAL: counts[VENUE_CLASS_COMMERCIAL],
+        VENUE_CLASS_PUBLIC: counts[VENUE_CLASS_PUBLIC],
+        "unknown": counts["unknown"],
+    }
+
+
+def _venue_class_sort_key(venue_class: str) -> int:
+    if venue_class == VENUE_CLASS_COMMERCIAL:
+        return 0
+    if venue_class == VENUE_CLASS_PUBLIC:
+        return 1
+    return 2
 
 
 def _operator_evidence_text(

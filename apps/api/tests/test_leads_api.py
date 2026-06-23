@@ -83,6 +83,7 @@ def _lead_db_row() -> dict[str, Any]:
         "id": "op_tality",
         "name": "Tality Wellness Mount Pleasant",
         "categories": ["recovery_contrast_therapy", "community_social_wellness"],
+        "venue_class": "commercial_wellness",
         "status": "open",
         "address": "107 East 3rd Avenue, Vancouver, BC",
         "municipality": "Vancouver",

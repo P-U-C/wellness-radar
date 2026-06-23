@@ -14,6 +14,7 @@ class OperatorItem(BaseModel):
     id: str
     name: str
     categories: list[str]
+    venue_class: str
     status: str
     address: str | None
     municipality: str | None
@@ -59,6 +60,7 @@ class BundleSummaryItem(BaseModel):
     id: str
     label: str
     slug: str
+    venue_class: str
     bundle_score: float
     score: float
     components: dict[str, Any]
@@ -76,6 +78,7 @@ class BundleMemberItem(BaseModel):
     id: str
     name: str
     categories: list[str]
+    venue_class: str
     status: str
     address: str | None
     municipality: str | None
