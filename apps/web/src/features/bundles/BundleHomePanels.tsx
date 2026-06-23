@@ -1,11 +1,22 @@
-import { BarChart3, MapPin, UserRound, Users } from "lucide-react";
-import type { BundleDetail, BundleGeoConcentration, BundleSummary } from "../../lib/api";
+import { BarChart3, Globe2, MapPin, Sparkles, TrendingUp, UserRound, Users } from "lucide-react";
+import { ConfidenceBar } from "../../components";
+import type {
+  BundleDetail,
+  BundleGeoConcentration,
+  BundleSummary,
+  DailyBrief,
+  FirstMoverCity,
+  OpportunityProposition,
+  WorldwideMatch
+} from "../../lib/api";
 import { formatScore } from "../../lib/format";
+import { TodayBriefPanel } from "../brief/TodayBriefPanel";
 
 type BundleRailProps = {
   bundles: BundleSummary[];
   selectedBundleId: string | null;
   mappedPlaceCount: number;
+  totalPlaceCount: number;
   omittedPlaceCount: number;
   onSelectBundle: (bundleId: string) => void;
   onClearBundle: () => void;
@@ -18,12 +29,17 @@ type BundleDetailPanelProps = {
   error: string | null;
   mappedPlaceCount: number;
   omittedPlaceCount: number;
+  brief: DailyBrief | null;
+  briefLoading: boolean;
+  briefError: string | null;
+  propositions: OpportunityProposition[];
 };
 
 export function BundleRail({
   bundles,
   selectedBundleId,
   mappedPlaceCount,
+  totalPlaceCount,
   omittedPlaceCount,
   onSelectBundle,
   onClearBundle
@@ -47,7 +63,7 @@ export function BundleRail({
         <span>
           <strong>All places</strong>
           <b>
-            {mappedPlaceCount} mapped
+            showing {mappedPlaceCount} of {totalPlaceCount}
             {omittedPlaceCount > 0 ? ` / ${omittedPlaceCount} missing lat/lng` : ""}
           </b>
         </span>
@@ -98,15 +114,36 @@ export function BundleDetailPanel({
   loading,
   error,
   mappedPlaceCount,
-  omittedPlaceCount
+  omittedPlaceCount,
+  brief,
+  briefLoading,
+  briefError,
+  propositions
 }: BundleDetailPanelProps) {
   if (!bundle) {
     return (
-      <aside className="wr-bundle-detail-panel" aria-label="Map coverage">
-        <div className="wr-bundle-detail-head">
-          <span>WHAT'S AVAILABLE</span>
-          <h2>Metro Vancouver places</h2>
-          <strong>{mappedPlaceCount}</strong>
+      <aside className="wr-bundle-detail-panel" aria-label="Today's findings">
+        <TodayBriefPanel brief={brief} loading={briefLoading} error={briefError} />
+        <div className="wr-bundle-detail-section">
+          <h3>
+            <Sparkles size={15} />
+            Top opportunities we found
+          </h3>
+          <div className="wr-home-propositions">
+            {propositions.slice(0, 4).map((proposition) => (
+              <article key={proposition.id}>
+                <div className="wr-home-prop-head">
+                  <strong>{proposition.headline}</strong>
+                  <span>{proposition.geo_name}</span>
+                </div>
+                <p>{proposition.thesis ?? proposition.summary}</p>
+                <ConfidenceBar score={proposition.confidence_score} />
+              </article>
+            ))}
+            {propositions.length === 0 ? (
+              <p className="wr-bundle-empty">No source-backed opportunities yet.</p>
+            ) : null}
+          </div>
         </div>
         <div className="wr-bundle-detail-section">
           <dl className="wr-bundle-facts">
@@ -128,6 +165,9 @@ export function BundleDetailPanel({
   const scoreRows = componentRows(activeDetail.components);
   const geographyRows = topGeographies(activeDetail.geography);
   const topPeople = detail?.top_people ?? [];
+  const worldwide = detail?.worldwide_match ?? null;
+  const firstMovers = detail?.first_mover_cities ?? [];
+  const trendingLabel = formatPercent(numberComponent(bundle.components, "momentum") ?? bundle.score);
 
   return (
     <aside className="wr-bundle-detail-panel" aria-label="Selected bundle details">
@@ -137,10 +177,11 @@ export function BundleDetailPanel({
         <strong>{formatScore(bundle.score)}</strong>
       </div>
 
-      <div className="wr-bundle-detail-section">
+      <div className="wr-bundle-detail-section wr-answer" data-q="1">
         <h3>
-          <BarChart3 size={15} />
-          Score breakdown
+          <TrendingUp size={15} />
+          <span className="wr-answer-q">Is it trending here?</span>
+          <b className="wr-answer-tag">{trendingLabel} momentum</b>
         </h3>
         <div className="wr-component-list">
           {scoreRows.map((row) => (
@@ -158,10 +199,11 @@ export function BundleDetailPanel({
         </div>
       </div>
 
-      <div className="wr-bundle-detail-section">
+      <div className="wr-bundle-detail-section wr-answer" data-q="2">
         <h3>
           <MapPin size={15} />
-          Geography
+          <span className="wr-answer-q">What's available, and where?</span>
+          <b className="wr-answer-tag">{bundle.member_count} places</b>
         </h3>
         <div className="wr-geo-list">
           {geographyRows.map((geo) => (
@@ -174,10 +216,11 @@ export function BundleDetailPanel({
         </div>
       </div>
 
-      <div className="wr-bundle-detail-section">
+      <div className="wr-bundle-detail-section wr-answer" data-q="3">
         <h3>
           <UserRound size={15} />
-          Top people
+          <span className="wr-answer-q">Who's driving it?</span>
+          <b className="wr-answer-tag">{topPeople.length} people</b>
         </h3>
         {loading && topPeople.length === 0 ? <p>Loading people.</p> : null}
         {error ? <p>{error}</p> : null}
@@ -195,8 +238,67 @@ export function BundleDetailPanel({
           {!loading && !error && topPeople.length === 0 ? <p>No top people returned.</p> : null}
         </div>
       </div>
+
+      <div className="wr-bundle-detail-section wr-answer" data-q="4">
+        <h3>
+          <Globe2 size={15} />
+          <span className="wr-answer-q">Does it match a worldwide trend?</span>
+          {worldwide ? <b className="wr-answer-tag">{verdictLabel(worldwide.verdict)}</b> : null}
+        </h3>
+        {worldwide ? (
+          <div className="wr-worldwide">
+            <p className="wr-worldwide-verdict">{worldwideNarrative(worldwide)}</p>
+            <ConfidenceBar score={worldwide.confidence_score} label="GLOBAL" />
+          </div>
+        ) : (
+          <p>No worldwide signal computed for this bundle yet.</p>
+        )}
+      </div>
+
+      <div className="wr-bundle-detail-section wr-answer" data-q="5">
+        <h3>
+          <Globe2 size={15} />
+          <span className="wr-answer-q">What do first-mover cities show?</span>
+          {firstMovers.length > 0 ? <b className="wr-answer-tag">{firstMovers.length} cities</b> : null}
+        </h3>
+        <div className="wr-geo-list">
+          {firstMovers.slice(0, 6).map((city) => (
+            <div key={city.city}>
+              <span>{city.city}</span>
+              <b>{firstMoverLabel(city)}</b>
+            </div>
+          ))}
+          {firstMovers.length === 0 ? <p>No first-mover city data yet.</p> : null}
+        </div>
+      </div>
     </aside>
   );
+}
+
+function verdictLabel(verdict: string): string {
+  return verdict.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function worldwideNarrative(match: WorldwideMatch): string {
+  const direction =
+    match.direction === "rising"
+      ? "rising"
+      : match.direction === "cooling"
+        ? "cooling"
+        : "flat";
+  const spread = match.components?.cities_with_supply;
+  const spreadText =
+    typeof spread === "number" ? ` Supplied in ${spread} of the benchmark cities.` : "";
+  const status = match.source_status === "fixture_fallback" ? " (fallback data)" : "";
+  return `Global attention is ${direction}; verdict: ${match.verdict}.${spreadText}${status}`;
+}
+
+function firstMoverLabel(city: FirstMoverCity): string {
+  const ratio = city.ratio_vs_vancouver;
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return `${city.count} places`;
+  }
+  return `${city.count} places / ${ratio.toFixed(1)}x vs Van`;
 }
 
 function numberComponent(components: Record<string, unknown>, key: string): number | null {

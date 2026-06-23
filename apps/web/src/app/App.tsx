@@ -56,6 +56,12 @@ const CATEGORIES = [
   { value: "community_social_wellness", label: "Social" }
 ];
 
+const VENUE_CLASSES = [
+  { value: "commercial_wellness", label: "Wellness" },
+  { value: "public_recreation", label: "Recreation" },
+  { value: "all", label: "All venues" }
+];
+
 type Screen = "console" | "operator" | "feed" | "opportunity" | "people" | "search" | "system";
 
 type RouteState = {
@@ -97,6 +103,7 @@ export function App() {
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
   const [category, setCategory] = useState("all");
+  const [venueClass, setVenueClass] = useState("commercial_wellness");
   const [opportunityGeoLevel, setOpportunityGeoLevel] = useState<"CSD" | "neighborhood">("neighborhood");
   const [peopleSort] = useState("influence");
   const [minConfidence, setMinConfidence] = useState(0.0);
@@ -133,7 +140,7 @@ export function App() {
         graphData,
         observabilityData
       ] = await Promise.all([
-        fetchOperators(category),
+        fetchOperators(category, venueClass),
         fetchSignals(),
         fetchSourceRuns(),
         fetchSourceFreshness(),
@@ -168,7 +175,7 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }, [category, opportunityGeoLevel, peopleSort]);
+  }, [category, venueClass, opportunityGeoLevel, peopleSort]);
 
   useEffect(() => {
     void loadData();
@@ -533,8 +540,9 @@ export function App() {
             <BundleRail
               bundles={bundles}
               selectedBundleId={selectedBundleId}
-              mappedPlaceCount={mappedOperators.length}
-              omittedPlaceCount={omittedOperatorCount}
+              mappedPlaceCount={homeMapOperators.length}
+              totalPlaceCount={selectedBundleId ? selectedBundleOperators.length : sourceBackedOperators.length}
+              omittedPlaceCount={selectedBundleId ? 0 : omittedOperatorCount}
               onSelectBundle={onSelectBundle}
               onClearBundle={onClearBundle}
             />
@@ -554,6 +562,18 @@ export function App() {
                   setSelectedSignalId(null);
                 }}
               />
+              <div className="wr-venue-toggle" aria-label="Venue class filter">
+                {VENUE_CLASSES.map((item) => (
+                  <button
+                    key={item.value}
+                    className={venueClass === item.value ? "is-active" : ""}
+                    type="button"
+                    onClick={() => setVenueClass(item.value)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </section>
             <BundleDetailPanel
               bundle={selectedBundle}
@@ -562,6 +582,10 @@ export function App() {
               error={bundleError}
               mappedPlaceCount={mappedOperators.length}
               omittedPlaceCount={omittedOperatorCount}
+              brief={brief}
+              briefLoading={loading}
+              briefError={error}
+              propositions={visiblePropositions}
             />
           </div>
         ) : screen === "operator" ? (

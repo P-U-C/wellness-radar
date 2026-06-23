@@ -20,6 +20,7 @@ export type Operator = {
   id: string;
   name: string;
   categories: string[];
+  venue_class?: string | null;
   status: string;
   address: string | null;
   municipality: string | null;
@@ -95,9 +96,36 @@ export type BundlePerson = {
   freshness_age_hours?: number | null;
 };
 
+export type WorldwideMatch = {
+  direction: string;
+  value: number;
+  verdict: string;
+  source_status: string;
+  confidence_score: number;
+  window_days?: number;
+  methodology_version?: string;
+  components?: Record<string, number>;
+  source_errors?: string[];
+  source_refs: SourceRef[];
+};
+
+export type FirstMoverCity = {
+  city: string;
+  count: number;
+  density: number;
+  ratio_vs_vancouver: number;
+  source_status: string;
+  confidence_score: number;
+  source_error?: string | null;
+  source_refs: SourceRef[];
+};
+
 export type BundleDetail = BundleSummary & {
+  venue_class?: string | null;
   members: BundleMember[];
   top_people: BundlePerson[];
+  worldwide_match: WorldwideMatch | null;
+  first_mover_cities: FirstMoverCity[];
 };
 
 export type Signal = {
@@ -449,10 +477,13 @@ async function getJson<T>(
   return (await response.json()) as T;
 }
 
-export async function fetchOperators(category?: string): Promise<Operator[]> {
+export async function fetchOperators(category?: string, venueClass?: string): Promise<Operator[]> {
   const params = new URLSearchParams({ bbox: "-123.3,49.0,-122.5,49.4", limit: "5000" });
   if (category && category !== "all") {
     params.set("category", category);
+  }
+  if (venueClass && venueClass !== "all") {
+    params.set("venue_class", venueClass);
   }
   const data = await getJson<{ items: Operator[] }>(`/operators?${params.toString()}`);
   if (!data) {
