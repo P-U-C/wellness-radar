@@ -457,14 +457,15 @@ def _market_sizing_line(
 ) -> str:
     if population is None or market_size is None:
         return (
-            f"Market sizing proxy: unknown catchment population x "
+            f"Catchment spend context: unknown catchment population x "
             f"{_format_money(per_person_value)} per-person {proxy.label.lower()}; "
-            "dollar size unavailable until the population denominator is present."
+            "context unavailable until the population denominator is present."
         )
     return (
-        f"Market sizing proxy: {_format_number(population, 'people')} x "
+        f"Catchment spend context: {_format_number(population, 'people')} x "
         f"{_format_money(per_person_value)} per-person {proxy.label.lower()} = "
-        f"{_format_money(market_size)} broad annual addressable spend."
+        f"{_format_money(market_size)} of annual household spending in the catchment "
+        "(context for demand, not capturable revenue)."
     )
 
 

@@ -39,7 +39,7 @@ export function PeopleLeaderboard({
             </div>
             <div>
               <span>
-                <i /> PERSON / {sentenceCase(selectedNode?.node_type ?? "public professional")}
+                <i /> {sentenceCase(person ? "person" : selectedNode?.node_type ?? "public professional")}
               </span>
               <h2>{person?.name ?? selectedNode?.label ?? "Public professional"}</h2>
             </div>
@@ -124,7 +124,15 @@ function ComponentBar({ label, value }: { label: string; value: number | null })
 }
 
 function topGraphNode(nodes: GraphNode[]): GraphNode | null {
-  return [...nodes].sort((a, b) => b.centrality - a.centrality)[0] ?? null;
+  // Default the inspector to a real person (then an organization) — never a bare
+  // operator/facility node, which would otherwise render as a "PERSON" with its
+  // centrality shown as an influence score (e.g. "Unnamed Park", influence 1.00).
+  const ranked = [...nodes].sort((a, b) => b.centrality - a.centrality);
+  return (
+    ranked.find((node) => node.node_type === "person") ??
+    ranked.find((node) => node.node_type === "organization") ??
+    null
+  );
 }
 
 function topPerson(people: Person[]): Person | null {
@@ -154,8 +162,10 @@ function findLinkedOperator(node: GraphNode, person: Person | null, operators: O
   return operators.find((operator) => affiliation.includes(operator.name.toLowerCase())) ?? null;
 }
 
-function influenceScore(person: Person | null, node: GraphNode | null): number {
-  return person?.influence_score ?? node?.centrality ?? person?.confidence_score ?? 0;
+function influenceScore(person: Person | null, _node: GraphNode | null): number {
+  // Only real people carry an influence score. Do NOT fall back to a graph node's
+  // centrality — that made facility/operator nodes read as "influence 1.00".
+  return person?.influence_score ?? person?.confidence_score ?? 0;
 }
 
 function componentValue(person: Person | null, key: string): number | null {

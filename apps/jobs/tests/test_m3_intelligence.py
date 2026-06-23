@@ -135,7 +135,8 @@ def test_proposition_template_exposes_raw_demand_and_sources() -> None:
     assert proposition["competitor_count_within_radius"] == 3
     assert proposition["nearest_competitors"][0]["name"] == "AetherHaus"
     assert proposition["population"] == 44149.8667
-    assert proposition["market_sizing_line"].startswith("Market sizing proxy:")
+    assert proposition["market_sizing_line"].startswith("Catchment spend context:")
+    assert "context for demand, not capturable revenue" in proposition["market_sizing_line"]
     assert "AetherHaus" in proposition["thesis"]
     assert "fixture-backed" in proposition["confidence_narrative"]
     assert proposition["confidence_score"] < 0.63
