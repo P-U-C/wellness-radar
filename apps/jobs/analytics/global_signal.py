@@ -298,8 +298,13 @@ class BundleGlobalSignalFetcher:
         gdelt_rate_limit_seconds: float = 5.1,
     ) -> None:
         self.repository = repository
+        # Keep the sweep moving: GDELT throttles hard and can hang for tens of seconds,
+        # which serially blocks the fast Overpass first-mover fetches. A short default
+        # timeout fails GDELT fast to its fixture fallback (in auto mode) while leaving
+        # the sub-second Overpass calls unaffected. Tunable via WR_BUNDLE_GLOBAL_HTTP_TIMEOUT.
+        http_timeout = float(os.getenv("WR_BUNDLE_GLOBAL_HTTP_TIMEOUT", "12"))
         self.client = client or httpx.Client(
-            timeout=35.0,
+            timeout=http_timeout,
             headers={"user-agent": "wellness-radar/0.1", "accept": "application/json,*/*"},
         )
         self.fixture = json.loads(fixture_path.read_text())
