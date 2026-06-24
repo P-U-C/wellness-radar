@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from apps.jobs.adapters.bc_data_catalogue import BCDataCatalogueAdapter
 from apps.jobs.adapters.manual_seed import ManualRecoverySeedAdapter
 from apps.jobs.adapters.municipal_facilities import (
     MUNICIPAL_SOURCES,
@@ -130,10 +131,13 @@ def test_osm_overpass_new_sport_tags_classify_to_specific_categories() -> None:
 
 
 def test_municipal_facilities_falls_back_to_recorded_source_fixture() -> None:
+    west_vancouver_source = next(
+        source for source in MUNICIPAL_SOURCES if source.key == "west_vancouver_parks"
+    )
     adapter = MunicipalFacilitiesAdapter(
         limit=5,
         client=FailingHttpClient(),  # type: ignore[arg-type]
-        sources=(MUNICIPAL_SOURCES[0],),
+        sources=(west_vancouver_source,),
         fixture_dir=FIXTURES,
     )
     repository = InMemoryRepository()
@@ -155,6 +159,51 @@ def test_municipal_facilities_falls_back_to_recorded_source_fixture() -> None:
     raw_payload = next(iter(repository.raw_payloads.values()))
     assert raw_payload["_source_error"].startswith("portal unavailable")
     assert raw_payload["_source"]["registry_name"] == "municipal_facilities_west_vancouver"
+
+
+def test_municipal_single_registry_source_runs_and_does_not_force_public_recreation() -> None:
+    delta_source = next(
+        source for source in MUNICIPAL_SOURCES if source.key == "delta_business_licences"
+    )
+    adapter = MunicipalFacilitiesAdapter(
+        limit=5,
+        client=FakeHttpClient(
+            {
+                "features": [
+                    {
+                        "id": 15,
+                        "properties": {
+                            "OBJECTID": 15,
+                            "TRADE_NAME": "Absolute Spa Group",
+                            "BUSINESS_TYPE": "Personal Services / Spas",
+                            "ADDRESS": "F-1215 56 ST\r\nDELTA BC  V4L 2A6",
+                            "AREA_REGION": "SOUTH DELTA",
+                            "EMPLOYEES": "3",
+                            "TRADE_NAICS_CODE": "812114",
+                        },
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [-123.069505919687, 49.0251617248708],
+                        },
+                    }
+                ]
+            }
+        ),  # type: ignore[arg-type]
+        sources=(delta_source,),
+        source_name=delta_source.registry_name,
+        fixture_dir=None,
+    )
+    repository = InMemoryRepository()
+
+    metrics = run_adapter(adapter, repository)
+
+    assert metrics.records_persisted == 1
+    assert repository.source_runs[1]["source_name"] == "municipal_facilities_delta"
+    operator = next(iter(repository.operators.values()))
+    assert operator.source_name == "municipal_facilities_delta"
+    assert "spa_thermal" in operator.categories
+    assert "public_recreation" not in operator.categories
+    assert operator.source_refs[0]["source_name"] == "municipal_facilities_delta"
 
 
 def test_manual_recovery_seed_contains_required_private_alpha_records() -> None:
@@ -195,16 +244,91 @@ def test_orgbook_enrichment_matches_exact_legal_name_and_records_unmatched() -> 
     operator = seed.normalize(tality_raw, raw_payload_id)[0]
     repository.upsert_operator(operator)
 
-    adapter = OrgBookBCEnrichmentAdapter(
-        client=FakeHttpClient(load_json("orgbook_tality.json"))  # type: ignore[arg-type]
-    )
+    fake_client = FakeHttpClient(load_json("orgbook_tality.json"))
+    adapter = OrgBookBCEnrichmentAdapter(client=fake_client)  # type: ignore[arg-type]
     metrics = run_orgbook_enrichment(adapter, repository, limit=10)
 
     assert metrics.records_persisted >= 2
+    assert fake_client.requests[0]["params"]["inactive"] == "false"
+    assert fake_client.requests[0]["params"]["latest"] == "true"
     matched = [org for org in repository.organizations.values() if org.orgbook_id]
     unmatched = [org for org in repository.organizations.values() if not org.orgbook_id]
     assert matched[0].orgbook_id == "2381381"
     assert unmatched
+
+
+class FakeBCDataCatalogueClient:
+    def __init__(self) -> None:
+        self.requests: list[dict[str, Any]] = []
+
+    def get(self, url: str, params: dict[str, Any] | None = None) -> FakeResponse:
+        self.requests.append({"url": url, "params": params})
+        if "package_search" in url:
+            return FakeResponse(
+                {
+                    "result": {
+                        "results": [
+                            {
+                                "name": "number-of-businesses",
+                                "title": "Number of Businesses",
+                                "url": "https://catalogue.data.gov.bc.ca/dataset/number-of-businesses",
+                                "license_title": "Open Government Licence - British Columbia",
+                                "resources": [
+                                    {
+                                        "id": "resource-csd",
+                                        "name": "Business Locations by Census Subdivision (CSV)",
+                                        "format": "csv",
+                                        "url": "https://example.test/bus_location_counts_cdcsd.csv",
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            )
+        return FakeResponse({}, text=BC_CATALOGUE_CSV)
+
+
+BC_CATALOGUE_CSV = "\n".join(
+    [
+        "B.C. Business Counts by Census Subdivision,,,,,,,,,,,,,,,,,,",
+        (
+            "British Columbia Business Counts by Employee Size and Census Subdivision, "
+            "2024,,,,,,,,,,,,,,,,,,"
+        ),
+        ",,,,,,,,,,,,,,,,,,",
+        (
+            "CDCSD Code,CSD Name,CD Name,DR Name,No Employees*,1 to 4,5 to 9,"
+            "10 to 19,20 to 49,50 to 99,100 to 199,200 to 499,500 to 999,"
+            "\"1,000 to 1,499\",\"1,500 to 2,499\",\"2,500 to 4,999\","
+            "\"5,000 and over\",Sub-Total With Employees,Grand Total"
+        ),
+        (
+            "5915022,Vancouver (CY),Metro Vancouver,Lower Mainland-Southwest,"
+            "205682,21900,6119,4156,3018,1058,563,263,74,19,9,9,6,37194,242876"
+        ),
+        "5917000,Elsewhere (CY),Capital,Vancouver Island and Coast,10,1,,,,,,,,,,,,,1,11",
+        "",
+    ]
+)
+
+
+def test_bc_data_catalogue_fetches_metro_vancouver_business_count_signal() -> None:
+    adapter = BCDataCatalogueAdapter(
+        limit=10,
+        client=FakeBCDataCatalogueClient(),  # type: ignore[arg-type]
+    )
+    repository = InMemoryRepository()
+
+    metrics = run_event_adapter(adapter, repository)
+
+    assert metrics.records_fetched == 1
+    assert metrics.records_persisted == 1
+    event = next(iter(repository.source_events.values()))
+    assert event.payload["geo_code"] == "5915022"
+    assert event.payload["grand_total_business_locations"] == 242876
+    assert event.source_refs[0]["licence"] == "Open Government Licence - British Columbia"
+    assert next(iter(repository.signals.values())).source_name == "bc_data_catalogue"
 
 
 def test_local_rss_adapter_creates_bc_gated_wellness_signal() -> None:
