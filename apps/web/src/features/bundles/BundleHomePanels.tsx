@@ -167,6 +167,9 @@ export function BundleDetailPanel({
   const topPeople = detail?.top_people ?? [];
   const worldwide = detail?.worldwide_match ?? null;
   const firstMovers = detail?.first_mover_cities ?? [];
+  const firstMoversAreFixture = firstMovers.some(
+    (city) => city.source_status === "fixture_fallback",
+  );
   const trendingLabel = formatPercent(numberComponent(bundle.components, "momentum") ?? bundle.score);
 
   return (
@@ -265,11 +268,24 @@ export function BundleDetailPanel({
           {firstMovers.slice(0, 6).map((city) => (
             <div key={city.city}>
               <span>{city.city}</span>
-              <b>{firstMoverLabel(city)}</b>
+              <b>
+                {firstMoverLabel(city)}
+                {city.source_status === "fixture_fallback" ? (
+                  <em className="wr-fixture-flag" title="Benchmark fixture, not a live feed">
+                    fixture
+                  </em>
+                ) : null}
+              </b>
             </div>
           ))}
           {firstMovers.length === 0 ? <p>No first-mover city data yet.</p> : null}
         </div>
+        {firstMoversAreFixture ? (
+          <p className="wr-fixture-note">
+            Benchmark city counts are fixture estimates, not a live international feed — use for
+            directional comparison only.
+          </p>
+        ) : null}
       </div>
     </aside>
   );
