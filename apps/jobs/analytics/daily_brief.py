@@ -529,6 +529,13 @@ def _new_high_trust_signals(
             severity = 'high'::signal_severity
             OR trust_tier IN ('official', 'reputable_press')
           )
+          -- Keep clinical / medical-device recalls out of a wellness market brief
+          -- (this is not a clinical product). Retain only recalls tied to a tracked
+          -- wellness operator; drop generic device/drug recalls as noise.
+          AND NOT (type = 'health_canada_recall' AND related_operator_id IS NULL)
+          -- Drop bare public-recreation facility observations (parks/courts/rinks) from
+          -- the brief: they are big-net coverage noise, not commercial-wellness signals.
+          AND type <> 'public_facility_observed'
         ORDER BY
           CASE severity WHEN 'high' THEN 0 WHEN 'notable' THEN 1 ELSE 2 END,
           CASE trust_tier WHEN 'official' THEN 0 WHEN 'reputable_press' THEN 1 ELSE 2 END,

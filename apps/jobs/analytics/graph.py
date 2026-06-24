@@ -74,6 +74,10 @@ class GraphRepository(DatabaseRepository):
                   confidence_score
                 FROM "operator"
                 WHERE jsonb_array_length(source_refs) > 0
+                  -- Keep public-recreation facilities (parks, courts, rinks) out of the
+                  -- people/org graph: they have no people behind them and otherwise flood
+                  -- the graph and can surface as a top-centrality "person".
+                  AND COALESCE(venue_class, '') <> 'public_recreation'
                 """
             ).fetchall()
         )

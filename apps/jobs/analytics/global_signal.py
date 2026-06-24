@@ -154,7 +154,7 @@ class DatabaseBundleGlobalRepository(DatabaseRepository):
         return list(
             self.conn.execute(
                 """
-                SELECT id, label, slug, source_refs
+                SELECT id, label, slug, member_count, source_refs
                 FROM bundle
                 WHERE jsonb_array_length(source_refs) > 0
                 ORDER BY bundle_score DESC, label ASC
@@ -298,8 +298,13 @@ class BundleGlobalSignalFetcher:
         gdelt_rate_limit_seconds: float = 5.1,
     ) -> None:
         self.repository = repository
+        # Keep the sweep moving: GDELT throttles hard and can hang for tens of seconds,
+        # which serially blocks the fast Overpass first-mover fetches. A short default
+        # timeout fails GDELT fast to its fixture fallback (in auto mode) while leaving
+        # the sub-second Overpass calls unaffected. Tunable via WR_BUNDLE_GLOBAL_HTTP_TIMEOUT.
+        http_timeout = float(os.getenv("WR_BUNDLE_GLOBAL_HTTP_TIMEOUT", "12"))
         self.client = client or httpx.Client(
-            timeout=35.0,
+            timeout=http_timeout,
             headers={"user-agent": "wellness-radar/0.1", "accept": "application/json,*/*"},
         )
         self.fixture = json.loads(fixture_path.read_text())
@@ -320,6 +325,7 @@ class BundleGlobalSignalFetcher:
         cities = _city_records(
             bundle_id=str(bundle["id"]),
             outcomes=city_outcomes,
+            local_vancouver_count=int(bundle.get("member_count") or 0),
         )
         worldwide_match = _worldwide_match(
             gdelt=gdelt,
@@ -691,13 +697,21 @@ def _definition_for_bundle(bundle: dict[str, Any]) -> BundleDefinition | None:
 
 
 def _city_records(
-    *, bundle_id: str, outcomes: Sequence[FetchOutcome]
+    *,
+    bundle_id: str,
+    outcomes: Sequence[FetchOutcome],
+    local_vancouver_count: int | None = None,
 ) -> list[FirstMoverCityRecord]:
     densities: dict[str, float] = {}
     counts: dict[str, int] = {}
     outcomes_by_city: dict[str, FetchOutcome] = {}
     for city, outcome in zip(CITY_CONFIGS, outcomes, strict=False):
         count = int(outcome.payload.get("count") or 0)
+        # Vancouver is our home city: prefer our own authoritative mapped supply over the
+        # Overpass/fixture peer-city path, which can stub Vancouver to 0 and break trust
+        # (e.g. a bundle showing 68 mapped places yet "Vancouver: 0" in first-mover).
+        if city.city == "Vancouver" and local_vancouver_count:
+            count = int(local_vancouver_count)
         density = count / max(city.population / 1_000_000, 0.0001)
         counts[city.city] = count
         densities[city.city] = density
@@ -708,6 +722,7 @@ def _city_records(
         outcome = outcomes_by_city[city.city]
         density = densities[city.city]
         ratio = 1.0 if city.city == "Vancouver" else density / baseline_density
+        is_local_vancouver = city.city == "Vancouver" and bool(local_vancouver_count)
         records.append(
             FirstMoverCityRecord(
                 bundle_id=bundle_id,
@@ -715,7 +730,7 @@ def _city_records(
                 count=counts[city.city],
                 density=round(density, 4),
                 ratio_vs_vancouver=round(ratio, 4),
-                source_status=outcome.source_status,
+                source_status="live" if is_local_vancouver else outcome.source_status,
                 source_refs=outcome.source_refs,
                 confidence_score=round(_clamp(outcome.confidence_score), 4),
                 source_error=outcome.source_error,
