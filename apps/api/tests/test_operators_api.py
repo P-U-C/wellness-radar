@@ -45,7 +45,8 @@ def test_operators_filter_by_venue_class(monkeypatch) -> None:
     fake_conn = FakeConn(
         [
             [_operator_row()],
-            [{"operator_count": 1, "with_contact_count": 0}],
+            [{"operator_count": 1, "with_contact_count": 0, "municipality_count": 1}],
+            [{"municipality": "Vancouver", "operator_count": 1}],
         ]
     )
 
@@ -63,6 +64,10 @@ def test_operators_filter_by_venue_class(monkeypatch) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["meta"]["venue_class"] == "public_recreation"
+    assert body["meta"]["municipality_coverage"]["municipality_count"] == 1
+    assert body["meta"]["municipality_coverage"]["municipalities"] == [
+        {"name": "Vancouver", "operator_count": 1}
+    ]
     assert body["items"][0]["venue_class"] == "public_recreation"
     query, params = fake_conn.queries[0]
     assert "op.venue_class = %s" in query

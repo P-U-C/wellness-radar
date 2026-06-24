@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { OperatorDetail } from "../features/entities/OperatorDetail";
 import { OpportunityPanel } from "../features/analytics/OpportunityPanel";
 import { BundleDetailPanel, BundleRail } from "../features/bundles/BundleHomePanels";
+import { CoverageBadge } from "../features/footprint/CoverageBadge";
 import { SignalFeed } from "../features/feed/SignalFeed";
 import { PeopleGraph } from "../features/graph/PeopleGraph";
 import { KioskMode } from "../features/kiosk/KioskMode";
@@ -14,6 +15,7 @@ import {
   fetchBundle,
   fetchBundles,
   fetchCategoryVelocity,
+  fetchCoverage,
   fetchDailyBrief,
   fetchObservability,
   fetchOperators,
@@ -29,6 +31,7 @@ import {
   type BundleDetail,
   type BundleSummary,
   type CategoryVelocity,
+  type CoverageMeta,
   type DailyBrief,
   type GraphEdge,
   type GraphNode,
@@ -98,6 +101,7 @@ export function App() {
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
   const [observability, setObservability] = useState<ObservabilitySummary | null>(null);
+  const [coverage, setCoverage] = useState<CoverageMeta | null>(null);
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
@@ -180,6 +184,18 @@ export function App() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchCoverage().then((data) => {
+      if (!cancelled) {
+        setCoverage(data);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (bundles.length === 0) {
@@ -519,6 +535,8 @@ export function App() {
         </nav>
 
         <div className="wr-topbar-spacer" />
+
+        <CoverageBadge coverage={coverage} />
 
         <button className="wr-global-search" type="button" onClick={() => navigate("/search")}>
           <Search size={14} />

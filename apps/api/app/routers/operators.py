@@ -135,17 +135,35 @@ def list_operators(
                     WHERE EXISTS (
                       SELECT 1 FROM operator_contact oc WHERE oc.operator_id = op.id
                     )
-                  )::int AS with_contact_count
+                  )::int AS with_contact_count,
+                  count(DISTINCT NULLIF(op.municipality, ''))::int AS municipality_count
                 FROM "operator" op
                 WHERE {where_sql}
                 """,
                 params,
             ).fetchone(),
         )
+        municipality_rows = cast(
+            list[dict[str, Any]],
+            conn.execute(
+                f"""
+                SELECT NULLIF(op.municipality, '') AS municipality, count(*)::int AS operator_count
+                FROM "operator" op
+                WHERE {where_sql} AND NULLIF(op.municipality, '') IS NOT NULL
+                GROUP BY 1
+                ORDER BY operator_count DESC, municipality ASC
+                """,
+                params,
+            ).fetchall(),
+        )
     runtime_metrics.observe_map_query(duration_ms=(time.perf_counter() - start) * 1000)
     items = [_operator_row(row) for row in rows]
     total = int(coverage["operator_count"] or 0)
     with_contact = int(coverage["with_contact_count"] or 0)
+    municipalities = [
+        {"name": str(row["municipality"]), "operator_count": int(row["operator_count"] or 0)}
+        for row in municipality_rows
+    ]
     return {
         "items": items,
         "meta": {
@@ -159,6 +177,10 @@ def list_operators(
                 "operator_count": total,
                 "with_contact_count": with_contact,
                 "coverage_ratio": round(with_contact / total, 4) if total else 0,
+            },
+            "municipality_coverage": {
+                "municipality_count": int(coverage["municipality_count"] or 0),
+                "municipalities": municipalities,
             },
         },
     }

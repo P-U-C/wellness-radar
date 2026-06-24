@@ -492,6 +492,39 @@ export async function fetchOperators(category?: string, venueClass?: string): Pr
   return data.items;
 }
 
+export interface MunicipalityCoverage {
+  name: string;
+  operator_count: number;
+}
+
+export interface CoverageMeta {
+  operator_count: number;
+  with_contact_count: number;
+  municipality_count: number;
+  municipalities: MunicipalityCoverage[];
+}
+
+export async function fetchCoverage(): Promise<CoverageMeta | null> {
+  const params = new URLSearchParams({ bbox: "-123.3,49.0,-122.5,49.4", limit: "1" });
+  const data = await getJson<{
+    meta?: {
+      contact_coverage?: { operator_count?: number; with_contact_count?: number };
+      municipality_coverage?: { municipality_count?: number; municipalities?: MunicipalityCoverage[] };
+    };
+  }>(`/operators?${params.toString()}`);
+  if (!data?.meta) {
+    return null;
+  }
+  const contact = data.meta.contact_coverage ?? {};
+  const muni = data.meta.municipality_coverage ?? {};
+  return {
+    operator_count: contact.operator_count ?? 0,
+    with_contact_count: contact.with_contact_count ?? 0,
+    municipality_count: muni.municipality_count ?? 0,
+    municipalities: muni.municipalities ?? [],
+  };
+}
+
 export async function fetchBundles(): Promise<BundleSummary[]> {
   const data = await getJson<{ items: BundleSummary[] }>("/bundles?limit=20");
   return data?.items ?? [];
