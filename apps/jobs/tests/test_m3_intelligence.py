@@ -73,12 +73,22 @@ def test_statcan_denominator_adapter_fetches_live_profile_and_business_counts(
         denominator
         for denominator in vancouver["denominators"]
         if denominator.get("category") == "recovery_contrast_therapy"
+        and denominator.get("source_table") == "33-10-1016-01"
+    )
+    employment_size = next(
+        denominator
+        for denominator in vancouver["denominators"]
+        if denominator.get("source_table") == "33-10-0766-01"
+        and denominator.get("category") == "spa_thermal"
+        and denominator.get("employment_size") == "1 to 4 employees"
     )
     assert population["value"] == 662248.0
     assert recovery["value"] == 650.0
     assert recovery["naics_code"] == "8121"
     assert recovery["source_vector"] == "v-5915022-8121"
     assert recovery["source_refs"][0]["source_name"] == "statcan_business_counts"
+    assert employment_size["value"] == 341.0
+    assert employment_size["source_refs"][0]["source_name"] == "statcan_business_counts_33_10_0766"
 
 
 def test_proposition_template_exposes_raw_demand_and_sources() -> None:
@@ -288,8 +298,12 @@ class FakeStatCanClient:
     def get_bytes(self, url: str, *, accept: str) -> bytes:
         if "profile/sdmx/rest/data" in url:
             return _profile_csv(url).encode("utf-8")
+        if "getFullTableDownloadCSV/33100766/en" in url:
+            return b'{"status":"SUCCESS","object":"https://www150.statcan.gc.ca/n1/tbl/csv/33100766-eng.zip"}'
         if "33101016-eng.zip" in url:
             return _business_counts_zip()
+        if "33100766-eng.zip" in url:
+            return _business_counts_employment_size_zip()
         raise AssertionError(f"unexpected StatCan URL {url} with {accept}")
 
 
@@ -372,4 +386,64 @@ def _business_counts_zip() -> bytes:
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("33101016.csv", output.getvalue())
+    return zip_buffer.getvalue()
+
+
+def _business_counts_employment_size_zip() -> bytes:
+    rows = [
+        ("Total, with employees", "Personal care services", "8121", 648),
+        ("1 to 4 employees", "Personal care services", "8121", 341),
+        ("Total, with employees", "Other amusement and recreation industries", "7139", 201),
+        ("1 to 4 employees", "Other amusement and recreation industries", "7139", 68),
+        ("Total, with employees", "Offices of other health practitioners", "6213", 753),
+        ("1 to 4 employees", "Offices of other health practitioners", "6213", 531),
+        ("Total, with employees", "Health care and social assistance", "62", 4474),
+        ("1 to 4 employees", "Health care and social assistance", "62", 3027),
+    ]
+    output = io.StringIO()
+    fieldnames = [
+        "REF_DATE",
+        "GEO",
+        "DGUID",
+        "Employment size",
+        "North American Industry Classification System (NAICS)",
+        "UOM",
+        "UOM_ID",
+        "SCALAR_FACTOR",
+        "SCALAR_ID",
+        "VECTOR",
+        "COORDINATE",
+        "VALUE",
+        "STATUS",
+        "SYMBOL",
+        "TERMINATED",
+        "DECIMALS",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for geography in LIVE_GEOGRAPHIES:
+        for employment_size, label, code, value in rows:
+            writer.writerow(
+                {
+                    "REF_DATE": "2024-07",
+                    "GEO": geography.geo_name,
+                    "DGUID": geography.dguid,
+                    "Employment size": employment_size,
+                    "North American Industry Classification System (NAICS)": f"{label} [{code}]",
+                    "UOM": "Number",
+                    "UOM_ID": "223",
+                    "SCALAR_FACTOR": "units",
+                    "SCALAR_ID": "0",
+                    "VECTOR": f"v-0766-{geography.geo_code}-{code}-{employment_size}",
+                    "COORDINATE": f"{geography.geo_code}.{code}.{employment_size}",
+                    "VALUE": str(value if geography.geo_code == "5915022" else 5),
+                    "STATUS": "",
+                    "SYMBOL": "",
+                    "TERMINATED": "",
+                    "DECIMALS": "0",
+                }
+            )
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("33100766.csv", output.getvalue())
     return zip_buffer.getvalue()

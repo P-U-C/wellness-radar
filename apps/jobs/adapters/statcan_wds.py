@@ -32,6 +32,15 @@ STATCAN_BUSINESS_COUNTS_CSV_URL = (
 STATCAN_BUSINESS_COUNTS_TABLE_URL = (
     "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3310101601"
 )
+STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_PRODUCT_ID = "33100766"
+STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_TABLE_ID = "33-10-0766-01"
+STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_WDS_URL = (
+    f"{STATCAN_WDS_BASE_URL}/getFullTableDownloadCSV/"
+    f"{STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_PRODUCT_ID}/en"
+)
+STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_TABLE_URL = (
+    "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3310076601"
+)
 STATCAN_CENSUS_PROFILE_BASE_URL = (
     "https://api.statcan.gc.ca/census-recensement/profile/sdmx/rest/data"
 )
@@ -85,6 +94,17 @@ LIVE_GEOGRAPHIES = [
         bc_gate_text="Burnaby, BC",
     ),
     StatCanGeoConfig(
+        geo_code="5915029",
+        geo_level="CSD",
+        geo_name="New Westminster",
+        parent_geo_code="933",
+        dguid="2021A00055915029",
+        census_profile_flow="DF_CSD",
+        lat=49.2057,
+        lng=-122.911,
+        bc_gate_text="New Westminster, BC",
+    ),
+    StatCanGeoConfig(
         geo_code="5915015",
         geo_level="CSD",
         geo_name="Richmond",
@@ -94,6 +114,17 @@ LIVE_GEOGRAPHIES = [
         lat=49.1666,
         lng=-123.1336,
         bc_gate_text="Richmond, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915011",
+        geo_level="CSD",
+        geo_name="Delta",
+        parent_geo_code="933",
+        dguid="2021A00055915011",
+        census_profile_flow="DF_CSD",
+        lat=49.0847,
+        lng=-123.0586,
+        bc_gate_text="Delta, BC",
     ),
     StatCanGeoConfig(
         geo_code="5915004",
@@ -107,15 +138,125 @@ LIVE_GEOGRAPHIES = [
         bc_gate_text="Surrey, BC",
     ),
     StatCanGeoConfig(
+        geo_code="5915001",
+        geo_level="CSD",
+        geo_name="Langley Township",
+        parent_geo_code="933",
+        dguid="2021A00055915001",
+        census_profile_flow="DF_CSD",
+        lat=49.1044,
+        lng=-122.5827,
+        bc_gate_text="Langley Township, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915002",
+        geo_level="CSD",
+        geo_name="Langley City",
+        parent_geo_code="933",
+        dguid="2021A00055915002",
+        census_profile_flow="DF_CSD",
+        lat=49.1042,
+        lng=-122.6604,
+        bc_gate_text="Langley City, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915007",
+        geo_level="CSD",
+        geo_name="White Rock",
+        parent_geo_code="933",
+        dguid="2021A00055915007",
+        census_profile_flow="DF_CSD",
+        lat=49.0253,
+        lng=-122.8028,
+        bc_gate_text="White Rock, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915034",
+        geo_level="CSD",
+        geo_name="Coquitlam",
+        parent_geo_code="933",
+        dguid="2021A00055915034",
+        census_profile_flow="DF_CSD",
+        lat=49.2838,
+        lng=-122.7932,
+        bc_gate_text="Coquitlam, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915039",
+        geo_level="CSD",
+        geo_name="Port Coquitlam",
+        parent_geo_code="933",
+        dguid="2021A00055915039",
+        census_profile_flow="DF_CSD",
+        lat=49.2628,
+        lng=-122.7811,
+        bc_gate_text="Port Coquitlam, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915043",
+        geo_level="CSD",
+        geo_name="Port Moody",
+        parent_geo_code="933",
+        dguid="2021A00055915043",
+        census_profile_flow="DF_CSD",
+        lat=49.283,
+        lng=-122.8316,
+        bc_gate_text="Port Moody, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915046",
+        geo_level="CSD",
+        geo_name="North Vancouver District",
+        parent_geo_code="933",
+        dguid="2021A00055915046",
+        census_profile_flow="DF_CSD",
+        lat=49.355,
+        lng=-123.039,
+        bc_gate_text="District of North Vancouver, BC",
+    ),
+    StatCanGeoConfig(
         geo_code="5915051",
         geo_level="CSD",
-        geo_name="North Vancouver",
+        geo_name="North Vancouver City",
         parent_geo_code="933",
         dguid="2021A00055915051",
         census_profile_flow="DF_CSD",
         lat=49.32,
         lng=-123.073,
-        bc_gate_text="North Vancouver, BC",
+        bc_gate_text="City of North Vancouver, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915055",
+        geo_level="CSD",
+        geo_name="West Vancouver",
+        parent_geo_code="933",
+        dguid="2021A00055915055",
+        census_profile_flow="DF_CSD",
+        lat=49.3349,
+        lng=-123.1668,
+        bc_gate_text="West Vancouver, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915070",
+        geo_level="CSD",
+        geo_name="Pitt Meadows",
+        parent_geo_code="933",
+        dguid="2021A00055915070",
+        census_profile_flow="DF_CSD",
+        lat=49.2212,
+        lng=-122.69,
+        bc_gate_text="Pitt Meadows, BC",
+    ),
+    StatCanGeoConfig(
+        geo_code="5915075",
+        geo_level="CSD",
+        geo_name="Maple Ridge",
+        parent_geo_code="933",
+        dguid="2021A00055915075",
+        census_profile_flow="DF_CSD",
+        lat=49.2193,
+        lng=-122.5984,
+        bc_gate_text="Maple Ridge, BC",
     ),
 ]
 
@@ -176,6 +317,39 @@ CATEGORY_BUSINESS_NAICS = {
         "confidence": 0.86,
     },
 }
+
+EMPLOYMENT_SIZE_BUSINESS_NAICS = (
+    {
+        "category": "fitness_movement",
+        "code": "7139",
+        "label": "Other amusement and recreation industries",
+        "confidence": 0.84,
+    },
+    {
+        "category": "recovery_contrast_therapy",
+        "code": "8121",
+        "label": "Personal care services",
+        "confidence": 0.86,
+    },
+    {
+        "category": "spa_thermal",
+        "code": "8121",
+        "label": "Personal care services",
+        "confidence": 0.88,
+    },
+    {
+        "category": "allied_health",
+        "code": "6213",
+        "label": "Offices of other health practitioners",
+        "confidence": 0.86,
+    },
+    {
+        "category": "allied_health",
+        "code": "62",
+        "label": "Health care and social assistance",
+        "confidence": 0.72,
+    },
+)
 
 
 @dataclass(frozen=True)
@@ -339,6 +513,7 @@ class StatCanWdsAdapter:
             category,
             naics_code,
             reference_period,
+            denominator.get("employment_size"),
         )
         return StatCanDenominator(
             id=denominator_id,
@@ -367,6 +542,7 @@ class StatCanWdsAdapter:
                 "source_coordinate": denominator.get("source_coordinate"),
                 "source_naics_label": denominator.get("source_naics_label"),
                 "source_metric": metric,
+                "source_employment_size": denominator.get("employment_size"),
             },
         )
 
@@ -394,8 +570,19 @@ def _records_from_live_sources(
         cache_dir=cache_dir,
         geographies=LIVE_GEOGRAPHIES,
     )
-    live_error = population_live_error or business_live_error
-    cache_status = _combined_cache_status(population_cache_status, business_cache_status)
+    employment_size_rows, employment_size_cache_status, employment_size_live_error = (
+        _fetch_business_employment_size_rows(
+            client=client,
+            cache_dir=cache_dir,
+            geographies=LIVE_GEOGRAPHIES,
+        )
+    )
+    live_error = population_live_error or business_live_error or employment_size_live_error
+    cache_status = _combined_cache_status(
+        population_cache_status,
+        business_cache_status,
+        employment_size_cache_status,
+    )
     now = _utc_seen_at()
     shared_refs = [
         SourceRef(
@@ -450,6 +637,34 @@ def _records_from_live_sources(
                     "source_naics_label": business["naics_label"],
                 }
             )
+        for employment_size in _employment_size_order():
+            for config in EMPLOYMENT_SIZE_BUSINESS_NAICS:
+                employment_key = (
+                    geography.geo_code,
+                    str(config["category"]),
+                    str(config["code"]),
+                    employment_size,
+                )
+                business = employment_size_rows.get(employment_key)
+                if business is None:
+                    continue
+                denominators.append(
+                    {
+                        "metric": "business_count",
+                        "category": config["category"],
+                        "naics_code": config["code"],
+                        "value": business["value"],
+                        "unit": "business locations with employees",
+                        "reference_period": str(business["reference_period"]),
+                        "employment_size": employment_size,
+                        "confidence_score": float(str(config["confidence"])),
+                        "source_refs": [business["source_ref"]],
+                        "source_table": STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_TABLE_ID,
+                        "source_vector": business["vector"],
+                        "source_coordinate": business["coordinate"],
+                        "source_naics_label": business["naics_label"],
+                    }
+                )
         records.append(
             {
                 "geo_code": geography.geo_code,
@@ -575,6 +790,100 @@ def _fetch_business_rows(
     return rows, cache_status, live_error
 
 
+def _fetch_business_employment_size_rows(
+    *,
+    client: Any | None,
+    cache_dir: Path,
+    geographies: list[StatCanGeoConfig],
+) -> tuple[dict[tuple[str, str, str, str], dict[str, Any]], str, str | None]:
+    download_url, wds_cache_status, wds_live_error = _get_wds_download_url(
+        STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_WDS_URL,
+        client=client,
+        cache_path=cache_dir / "33100766-download-url.json",
+    )
+    payload, csv_cache_status, csv_live_error = _get_url_bytes(
+        download_url,
+        client=client,
+        cache_path=cache_dir / "33100766-eng.zip",
+        accept="application/zip,*/*",
+    )
+    dguid_to_geo_code = {geography.dguid: geography.geo_code for geography in geographies}
+    wanted_by_code: dict[str, list[dict[str, Any]]] = {}
+    for config in EMPLOYMENT_SIZE_BUSINESS_NAICS:
+        wanted_by_code.setdefault(str(config["code"]), []).append(config)
+    rows: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive, archive.open(
+        "33100766.csv"
+    ) as raw_csv:
+        text = io.TextIOWrapper(raw_csv, encoding="utf-8-sig")
+        for row in csv.DictReader(text):
+            geo_code = dguid_to_geo_code.get(str(row.get("DGUID") or ""))
+            if not geo_code:
+                continue
+            employment_size = str(row.get("Employment size") or "").strip()
+            if not employment_size:
+                continue
+            naics_label = row.get("North American Industry Classification System (NAICS)")
+            naics_code = _naics_code(naics_label)
+            configs = wanted_by_code.get(naics_code)
+            if not configs:
+                continue
+            value = row.get("VALUE")
+            if value in {None, ""}:
+                continue
+            for config in configs:
+                rows[
+                    (
+                        geo_code,
+                        str(config["category"]),
+                        naics_code,
+                        employment_size,
+                    )
+                ] = {
+                    "value": float(str(value)),
+                    "reference_period": row.get("REF_DATE") or "2024-07",
+                    "employment_size": employment_size,
+                    "vector": row.get("VECTOR"),
+                    "coordinate": row.get("COORDINATE"),
+                    "naics_label": naics_label,
+                    "source_ref": SourceRef(
+                        source_name="statcan_business_counts_33_10_0766",
+                        url=STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_TABLE_URL,
+                        trust_tier="official",
+                        seen_at=_utc_seen_at(),
+                        source_record_id=(
+                            f"{STATCAN_BUSINESS_COUNTS_EMPLOYMENT_SIZE_TABLE_ID}:"
+                            f"{geo_code}:{naics_code}:{employment_size}:{row.get('VECTOR')}"
+                        ),
+                        licence="Statistics Canada Open Licence",
+                    ).as_dict(),
+                }
+    return (
+        rows,
+        _combined_cache_status(wds_cache_status, csv_cache_status),
+        wds_live_error or csv_live_error,
+    )
+
+
+def _get_wds_download_url(
+    url: str,
+    *,
+    client: Any | None,
+    cache_path: Path,
+) -> tuple[str, str, str | None]:
+    payload, cache_status, live_error = _get_url_bytes(
+        url,
+        client=client,
+        cache_path=cache_path,
+        accept="application/json,*/*",
+    )
+    decoded = json.loads(payload.decode("utf-8"))
+    download_url = decoded.get("object")
+    if decoded.get("status") != "SUCCESS" or not download_url:
+        raise RuntimeError(f"StatCan WDS did not return a CSV download URL for {url}")
+    return str(download_url), cache_status, live_error
+
+
 def _get_url_bytes(
     url: str,
     *,
@@ -638,6 +947,20 @@ def _combined_cache_status(*statuses: str) -> str:
     if any(status == "cache_hit" for status in statuses):
         return "mixed_live_cache"
     return "live_fetch"
+
+
+def _employment_size_order() -> list[str]:
+    return [
+        "Total, with employees",
+        "1 to 4 employees",
+        "5 to 9 employees",
+        "10 to 19 employees",
+        "20 to 49 employees",
+        "50 to 99 employees",
+        "100 to 199 employees",
+        "200 to 499 employees",
+        "500 plus employees",
+    ]
 
 
 def _utc_seen_at() -> str:
