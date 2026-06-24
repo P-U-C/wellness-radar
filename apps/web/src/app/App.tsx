@@ -743,7 +743,13 @@ export function App() {
             onOpenOpportunity={() => navigate("/opportunity")}
           />
         ) : screen === "system" ? (
-          <SystemScreen />
+          <SystemScreen
+            sources={sourceFreshness}
+            runs={sourceRuns}
+            observability={observability}
+            coverage={coverage}
+            counts={{ signals: signals.length, people: people.length, bundles: bundles.length }}
+          />
         ) : (
           <DeferredScreen
             screen={screen}

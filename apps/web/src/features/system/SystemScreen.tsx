@@ -1,167 +1,203 @@
-import { ConfidenceBar, EntityBadge, RangeSlider, SignalCard, SourceChip } from "../../components";
-import type { Signal, SourceRef } from "../../lib/api";
-import { entity, MAGMA, mapStyle, surfaces, text, trustTier } from "../../lib/theme";
+import { useMemo } from "react";
+import { AlertTriangle, Database, Gauge, RefreshCw } from "lucide-react";
+import type {
+  CoverageMeta,
+  ObservabilitySummary,
+  SourceFreshness,
+  SourceRun,
+} from "../../lib/api";
+import { formatAgeFromHours, formatAgeFromIso, sentenceCase } from "../../lib/format";
 
-const TRUST_TIERS = [
-  "official",
-  "reputable_press",
-  "commercial_api",
-  "community",
-  "informal",
-  "ai_inferred"
-];
+interface SystemScreenProps {
+  sources: SourceFreshness[];
+  runs: SourceRun[];
+  observability: ObservabilitySummary | null;
+  coverage: CoverageMeta | null;
+  counts: { signals: number; people: number; bundles: number };
+}
 
-const sampleRefs: SourceRef[] = TRUST_TIERS.map((tier) => ({
-  source_name: tier,
-  url: null,
-  trust_tier: tier,
-  seen_at: new Date().toISOString(),
-  source_record_id: `sample_${tier}`,
-  licence: "design reference"
-}));
+function freshnessState(source: SourceFreshness): "ok" | "stale" | "down" {
+  if (source.latest_status && source.latest_status !== "success") {
+    return "down";
+  }
+  if (source.is_stale || source.latest_status === null) {
+    return "stale";
+  }
+  return "ok";
+}
 
-const sampleSignal: Signal = {
-  id: "system_signal",
-  type: "new_operator",
-  severity: "info",
-  title: "Othership files second-location permit",
-  summary: "A source-backed signal rendered by the reusable SignalCard component.",
-  why_it_matters:
-    "Expansion into a dense recovery corridor changes the local competitive set and raises confidence in the category velocity signal.",
-  source_name: "City of Vancouver",
-  source_url: null,
-  trust_tier: "official",
-  occurred_at: new Date().toISOString(),
-  lat: 49.263,
-  lng: -123.102,
-  related_operator_id: null,
-  confidence_score: 0.9,
-  source_refs: [sampleRefs[0]],
-  freshness_age_hours: 3
-};
+function formatCount(value: number): string {
+  return value.toLocaleString("en-CA");
+}
 
-export function SystemScreen() {
+export function SystemScreen({
+  sources,
+  runs,
+  observability,
+  coverage,
+  counts,
+}: SystemScreenProps) {
+  const sorted = useMemo(() => {
+    const order = { down: 0, stale: 1, ok: 2 };
+    return [...sources].sort((a, b) => {
+      const sa = order[freshnessState(a)];
+      const sb = order[freshnessState(b)];
+      if (sa !== sb) return sa - sb;
+      return a.source_name.localeCompare(b.source_name);
+    });
+  }, [sources]);
+
+  const liveSources = sources.filter((s) => s.enabled).length;
+  const staleSources = sources.filter((s) => freshnessState(s) !== "ok").length;
+  const lastUpdate = useMemo(() => {
+    const ages = sources
+      .map((s) => s.age_hours)
+      .filter((value): value is number => typeof value === "number");
+    return ages.length ? Math.min(...ages) : null;
+  }, [sources]);
+
+  const contact = observability?.database?.wellness_contact_coverage;
+  const runtime = observability?.runtime;
+  const firing = (observability?.alerts ?? []).filter((a) => a.firing);
+  const errorRate =
+    runtime && runtime.api_requests_total > 0
+      ? runtime.api_errors_total / runtime.api_requests_total
+      : 0;
+
   return (
-    <section className="wr-system-screen" aria-label="Luminous design system">
+    <section className="wr-system-screen" aria-label="System status">
       <div className="wr-system-inner">
-        <header>
-          <span>DESIGN SYSTEM</span>
-          <h1>Luminous / Wellness Radar instrument system</h1>
+        <header className="wr-system-head">
+          <span>SYSTEM STATUS</span>
+          <h1>Data sources &amp; pipeline health</h1>
           <p>
-            Dark base, per-entity accents, magma data heat, provenance-first records, and mono numerics across every
-            analytical surface.
+            What the radar is running on right now — live sources, freshness, ingestion
+            history, and deal-flow readiness.
           </p>
         </header>
 
-        <section className="wr-system-section">
-          <h2>01 / Color Tokens</h2>
-          <h3>SURFACES</h3>
-          <div className="wr-token-grid">
-            {Object.entries(surfaces).map(([name, color]) => (
-              <TokenSwatch key={name} name={name} color={color} />
+        {firing.length > 0 ? (
+          <div className="wr-sys-alerts" role="status">
+            {firing.map((a) => (
+              <div key={a.condition} className={`wr-sys-alert is-${a.severity}`}>
+                <AlertTriangle size={14} />
+                <strong>{sentenceCase(a.condition)}</strong>
+                <span>{a.summary}</span>
+              </div>
             ))}
-            <TokenSwatch name="text" color={text.primary} />
           </div>
-          <h3>ENTITY ACCENTS</h3>
-          <div className="wr-token-grid is-entity">
-            <TokenSwatch name="operator" color={entity.operator} />
-            <TokenSwatch name="signal" color={entity.signal} />
-            <TokenSwatch name="people" color={entity.people} />
-            <TokenSwatch name="opportunity" color={entity.opportunity} />
-          </div>
-          <h3>MAGMA SCORE RAMP</h3>
-          <div className="wr-magma-reference" />
-          <div className="wr-magma-labels">
-            <span>0.0 / {MAGMA[0]}</span>
-            <span>0.5 / {MAGMA[3]}</span>
-            <span>1.0 / {MAGMA[5]}</span>
-          </div>
-        </section>
+        ) : null}
+
+        <div className="wr-sys-stat-grid">
+          <StatCard label="Mapped places" value={coverage ? formatCount(coverage.operator_count) : "—"} sub={coverage ? `${coverage.municipality_count} municipalities` : ""} />
+          <StatCard label="Live sources" value={`${liveSources}`} sub={staleSources ? `${staleSources} stale / erroring` : "all fresh"} tone={staleSources ? "warn" : "ok"} />
+          <StatCard label="Last ingest" value={lastUpdate === null ? "—" : formatAgeFromHours(lastUpdate)} sub="most-recent source" />
+          <StatCard label="Signals" value={formatCount(counts.signals)} sub={`${formatCount(counts.people)} people · ${counts.bundles} bundles`} />
+        </div>
 
         <section className="wr-system-section">
-          <h2>02 / Type Scale</h2>
-          <div className="wr-type-sheet">
-            <div>
-              <strong>Display 34/700</strong>
-              <span>Grotesk / screen titles</span>
+          <h2><Database size={15} /> Data sources <b>{sources.length}</b></h2>
+          <div className="wr-source-table" role="table">
+            <div className="wr-source-row is-head" role="row">
+              <span>Source</span>
+              <span>Trust</span>
+              <span>Cadence</span>
+              <span>Last update</span>
+              <span>Records</span>
+              <span>Status</span>
             </div>
-            <div>
-              <b>Heading 21/700</b>
-              <span>entity names</span>
-            </div>
-            <div>
-              <em>Body 15/600 and 13/400</em>
-              <span>cards, descriptions</span>
-            </div>
-            <div>
-              <code>Mono 12/500 / 49.2827N / conf 0.92 / 3h</code>
-              <span>all numerics, coords, IDs</span>
-            </div>
+            {sorted.map((s) => {
+              const state = freshnessState(s);
+              return (
+                <div key={s.source_name} className="wr-source-row" role="row">
+                  <span className="wr-source-name">
+                    <i className={`wr-dot is-${state}`} />
+                    <b>{sentenceCase(s.source_name)}</b>
+                    <small>{sentenceCase(s.family)}</small>
+                  </span>
+                  <span className={`wr-tier is-${s.trust_tier}`}>{sentenceCase(s.trust_tier)}</span>
+                  <span className="wr-mono">{s.cadence}</span>
+                  <span className="wr-mono">{formatAgeFromHours(s.age_hours)}{s.age_hours !== null ? " ago" : ""}</span>
+                  <span className="wr-mono">{s.records_persisted ?? "—"}</span>
+                  <span className={`wr-source-status is-${state}`}>
+                    {state === "ok" ? "fresh" : state === "stale" ? "stale" : "error"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
+          <p className="wr-source-foot">
+            Cadence = how often each source re-ingests. “Stale” means it has passed its freshness
+            SLA — the scheduler will refresh it on its next cycle. Trust tier drives how heavily a
+            record is weighted across the console.
+          </p>
         </section>
 
+        {contact ? (
+          <section className="wr-system-section">
+            <h2><Gauge size={15} /> Deal-flow readiness</h2>
+            <div className="wr-sys-stat-grid is-compact">
+              <StatCard label="Operators w/ contact" value={formatCount(contact.with_contact_count)} sub={`${Math.round(contact.coverage_ratio * 100)}% of ${formatCount(contact.operator_count)}`} />
+              <StatCard label="With phone" value={formatCount(contact.with_phone_count)} />
+              <StatCard label="With email" value={formatCount(contact.with_email_count)} />
+              <StatCard label="With website" value={formatCount(contact.with_website_count)} />
+            </div>
+          </section>
+        ) : null}
+
         <section className="wr-system-section">
-          <h2>03 / Component Library</h2>
-          <div className="wr-component-grid">
-            <article>
-              <h3>SOURCE CHIP / 6 TRUST TIERS</h3>
-              <div className="wr-system-chip-row">
-                {sampleRefs.map((ref) => (
-                  <SourceChip key={ref.trust_tier} refData={ref} compact />
-                ))}
+          <h2><RefreshCw size={15} /> Recent ingestion runs</h2>
+          <div className="wr-run-list">
+            {runs.length === 0 ? <p className="wr-source-foot">No runs recorded yet.</p> : null}
+            {runs.map((run) => (
+              <div key={run.id} className="wr-run-row">
+                <span className="wr-source-name">
+                  <i className={`wr-dot is-${run.status === "success" ? "ok" : "down"}`} />
+                  <b>{sentenceCase(run.source_name)}</b>
+                </span>
+                <span className="wr-mono">{run.completed_at ? `${formatAgeFromIso(run.completed_at)} ago` : "running"}</span>
+                <span className="wr-mono wr-run-counts">
+                  +{run.records_persisted} kept
+                  {run.records_rejected ? ` · ${run.records_rejected} rejected` : ""}
+                  {run.error_count ? ` · ${run.error_count} err` : ""}
+                </span>
               </div>
-            </article>
-            <article>
-              <h3>CONFIDENCE INDICATOR</h3>
-              <ConfidenceBar score={0.92} />
-              <ConfidenceBar score={0.66} />
-              <ConfidenceBar score={0.38} />
-            </article>
-            <article>
-              <h3>FEED ITEM</h3>
-              <SignalCard signal={sampleSignal} variant="stream" context="Mount Pleasant" actionLabel="fly to" />
-            </article>
-            <article>
-              <h3>CONTROLS</h3>
-              <div className="wr-system-controls">
-                <EntityBadge type="operator" label="OPERATOR" />
-                <EntityBadge type="signal" label="SIGNAL" />
-                <EntityBadge type="people" label="PEOPLE" />
-                <EntityBadge type="opportunity" label="OPPORTUNITY" />
-              </div>
-              <RangeSlider label="MIN CONFIDENCE" value={0.6} color="ok" onChange={() => undefined} />
-            </article>
+            ))}
           </div>
         </section>
 
-        <section className="wr-system-section">
-          <h2>04 / Map Style</h2>
-          <div className="wr-map-token-grid">
-            <TokenSwatch name="land" color={mapStyle.land} />
-            <TokenSwatch name="water" color={mapStyle.water} />
-            <TokenSwatch name="graticule" color={mapStyle.graticule} />
-            <TokenSwatch name="pin" color={mapStyle.pin} />
-            <div>
-              <span>hex fill opacity</span>
-              <strong>{mapStyle.hexFillOpacity(0.72).toFixed(2)}</strong>
+        {runtime ? (
+          <section className="wr-system-section">
+            <h2><Gauge size={15} /> API runtime</h2>
+            <div className="wr-sys-stat-grid is-compact">
+              <StatCard label="Requests" value={formatCount(runtime.api_requests_total)} />
+              <StatCard label="Error rate" value={`${(errorRate * 100).toFixed(1)}%`} tone={errorRate > 0.02 ? "warn" : "ok"} />
+              <StatCard label="API latency" value={`${Math.round(runtime.api_latency_ms_avg)}ms`} sub="avg" />
+              <StatCard label="Map query" value={`${Math.round(runtime.map_query_latency_ms_avg)}ms`} sub="avg" />
             </div>
-            <div>
-              <span>trust tiers</span>
-              <strong>{Object.keys(trustTier).length}</strong>
-            </div>
-          </div>
-        </section>
+          </section>
+        ) : null}
       </div>
     </section>
   );
 }
 
-function TokenSwatch({ name, color }: { name: string; color: string }) {
+function StatCard({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "ok" | "warn";
+}) {
   return (
-    <div className="wr-token-swatch">
-      <i style={{ background: color }} />
-      <span>{name}</span>
-      <b>{color}</b>
+    <div className={`wr-stat-card${tone ? ` is-${tone}` : ""}`}>
+      <span className="wr-stat-label">{label}</span>
+      <strong className="wr-stat-value">{value}</strong>
+      {sub ? <span className="wr-stat-sub">{sub}</span> : null}
     </div>
   );
 }
