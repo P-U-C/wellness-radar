@@ -39,7 +39,13 @@ Runner = Callable[[str, int], RunMetrics]
 Sleep = Callable[[float], Awaitable[None]]
 AlertDispatcher = Callable[[str, BaseException], None]
 
-EVENT_ADAPTER_SOURCES = {"local_rss", "bc_gov_news_rss", "health_canada_recalls"}
+EVENT_ADAPTER_SOURCES = {
+    "local_rss",
+    "bc_gov_news_rss",
+    "health_canada_recalls",
+    "city_vancouver_building_permits",
+    "bc_data_catalogue",
+}
 
 
 @dataclass(frozen=True)
