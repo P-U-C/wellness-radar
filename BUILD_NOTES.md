@@ -1879,3 +1879,38 @@ To apply this to live data:
 python3 -m db.migrate
 PYTHONPATH=. python3 -m apps.jobs.runner people_graph
 ```
+
+## P1C
+
+### Scope
+
+Removed the fake live breakout surface for G1. `/trends` now hides
+`peer_city_trends_fixture` rows from the default response and returns explicit
+`meta.status = "data_pending"` plus `hidden_stub_count`/`pending_reason` when
+only fixtures exist. The React trend tiles and opportunity footer now render
+that as "data pending" instead of showing fixture sparklines or breakout labels.
+
+Bundle Q4/Q5 now use the existing real-source `bundle_global_signal` contract
+honestly:
+
+- Real/cached rows from `gdelt_doc` and `osm_overpass_first_mover` remain visible
+  with their source refs.
+- Missing `bundle_global` rows return `worldwide_match.source_status =
+  "data_pending"` with a reason and method source ref.
+- `fixture_fallback` worldwide rows are hidden behind the same pending state, so
+  fallback verdicts such as "global wave" cannot display as evidence.
+- `first_mover_cities` includes only live/cached city rows. If none exist, it is
+  an explicit empty-with-reason via `first_mover_cities_status`.
+
+### Real vs Gated
+
+No new live provider was added and no new category is claimed as newly real in
+this milestone. Categories with already-computed `bundle_global_signal` rows
+marked `live` or `cached` are shown as real GDELT/OSM aggregate evidence. Every
+other category, including categories whose only rows are fixture fallback, is
+gated as `data_pending` until `bundle_global_signal` is run successfully against
+live/free sources.
+
+The legacy `peer_city_trends_fixture` data remains stored for deterministic job
+tests, but it is no longer presented as live demand or a breakout signal by the
+API/UI default path.

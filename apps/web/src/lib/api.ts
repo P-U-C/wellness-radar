@@ -102,9 +102,9 @@ export type WorldwideMatch = {
   verdict: string;
   source_status: string;
   confidence_score: number;
-  window_days?: number;
+  window_days?: number | null;
   methodology_version?: string;
-  components?: Record<string, number>;
+  components?: Record<string, unknown>;
   source_errors?: string[];
   source_refs: SourceRef[];
 };
@@ -120,12 +120,23 @@ export type FirstMoverCity = {
   source_refs: SourceRef[];
 };
 
+export type GlobalSignalStatus = {
+  status: string;
+  source_status: string;
+  reason: string;
+  real_count: number;
+  hidden_fixture_count: number;
+  source_errors: string[];
+  source_refs: SourceRef[];
+};
+
 export type BundleDetail = BundleSummary & {
   venue_class?: string | null;
   members: BundleMember[];
   top_people: BundlePerson[];
   worldwide_match: WorldwideMatch | null;
   first_mover_cities: FirstMoverCity[];
+  first_mover_cities_status?: GlobalSignalStatus | null;
 };
 
 export type Signal = {
@@ -427,6 +438,9 @@ export type TrendTile = {
   confidence_score: number;
   is_stub: boolean;
   methodology: string;
+  source_status?: string;
+  status?: string;
+  pending_reason?: string | null;
 };
 
 export type GraphNode = {

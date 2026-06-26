@@ -11,6 +11,15 @@ from packages.schemas.api import BundleDetailResponse, BundlesResponse
 
 router = APIRouter(tags=["bundles"])
 MAX_BUNDLE_LIMIT = 100
+REAL_GLOBAL_SOURCE_STATUSES = {"live", "cached"}
+P1C_PENDING_SOURCE_REF = {
+    "source_name": "p1c_trend_gate",
+    "url": "apps/api/app/routers/bundles.py",
+    "trust_tier": "informal",
+    "seen_at": "2026-06-26T00:00:00Z",
+    "source_record_id": "p1c_honest_trends_gate",
+    "licence": None,
+}
 BundleVenueClassFilter = Literal[
     "commercial_wellness", "public_recreation", "unknown", "all"
 ]
@@ -235,10 +244,24 @@ def get_bundle(bundle_id: str) -> dict[str, Any]:
     item["members"] = [_member_item(row) for row in members]
     item["top_people"] = [_person_item(row) for row in people]
     item["supporting_signals"] = bundle["supporting_signals"] or []
-    item["worldwide_match"] = (
-        _worldwide_match_item(worldwide_match) if worldwide_match else None
+    item["worldwide_match"] = _worldwide_match_response(worldwide_match)
+    real_first_mover_rows = [
+        row
+        for row in first_mover_cities
+        if _is_real_global_row(row)
+    ]
+    hidden_first_mover_rows = [
+        row
+        for row in first_mover_cities
+        if not _is_real_global_row(row)
+    ]
+    item["first_mover_cities"] = [
+        _first_mover_city_item(row) for row in real_first_mover_rows
+    ]
+    item["first_mover_cities_status"] = _first_mover_cities_status(
+        real_first_mover_rows,
+        hidden_first_mover_rows,
     )
-    item["first_mover_cities"] = [_first_mover_city_item(row) for row in first_mover_cities]
     return item
 
 
@@ -333,6 +356,57 @@ def _worldwide_match_item(row: dict[str, Any]) -> dict[str, Any]:
     return worldwide_match
 
 
+def _worldwide_match_response(row: dict[str, Any] | None) -> dict[str, Any]:
+    if row is None:
+        return _pending_worldwide_match(
+            "No source-backed worldwide trend signal has been computed for this bundle.",
+            source_errors=["bundle_global_not_computed"],
+            source_refs=[P1C_PENDING_SOURCE_REF],
+        )
+    worldwide_match = _worldwide_match_item(row)
+    if worldwide_match.get("source_status") in REAL_GLOBAL_SOURCE_STATUSES:
+        return worldwide_match
+    source_errors = [str(error) for error in worldwide_match.get("source_errors") or []]
+    source_errors.append("fixture_fallback_hidden")
+    return _pending_worldwide_match(
+        (
+            "Only fixture fallback worldwide data exists for this bundle; fallback "
+            "verdicts are hidden until live or cached GDELT/OSM evidence is available."
+        ),
+        source_errors=source_errors,
+        source_refs=_unique_refs(
+            [
+                *list(worldwide_match.get("source_refs") or []),
+                *list(row.get("source_refs") or []),
+                P1C_PENDING_SOURCE_REF,
+            ]
+        ),
+    )
+
+
+def _pending_worldwide_match(
+    reason: str,
+    *,
+    source_errors: list[str],
+    source_refs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "direction": "unknown",
+        "value": 0.0,
+        "verdict": "data pending",
+        "source_status": "data_pending",
+        "confidence_score": 0.0,
+        "window_days": None,
+        "methodology_version": "p1c_honest_trends_gate",
+        "components": {
+            "reason": reason,
+            "next_step": "Run bundle_global_signal with live sources to populate this answer.",
+        },
+        "source_errors": source_errors[:8],
+        "source_refs": _unique_refs(source_refs),
+    }
+
+
 def _first_mover_city_item(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "city": row["city"],
@@ -344,6 +418,83 @@ def _first_mover_city_item(row: dict[str, Any]) -> dict[str, Any]:
         "source_error": row.get("source_error"),
         "source_refs": row["source_refs"],
     }
+
+
+def _is_real_global_row(row: dict[str, Any]) -> bool:
+    return (
+        row["source_status"] in REAL_GLOBAL_SOURCE_STATUSES
+        and not row.get("source_error")
+    )
+
+
+def _first_mover_cities_status(
+    real_rows: list[dict[str, Any]],
+    hidden_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if real_rows:
+        statuses = {str(row["source_status"]) for row in real_rows}
+        status = "cached" if "cached" in statuses else "live"
+        hidden_count = len(hidden_rows)
+        reason = "First-mover city counts are backed by live or cached aggregate source rows."
+        if hidden_count:
+            reason = (
+                "Live or cached first-mover city rows are shown; fixture fallback rows "
+                "are hidden."
+            )
+        return {
+            "status": status,
+            "source_status": status,
+            "reason": reason,
+            "real_count": len(real_rows),
+            "hidden_fixture_count": hidden_count,
+            "source_errors": _source_errors(hidden_rows),
+            "source_refs": _unique_refs(
+                [
+                    *_flatten_refs(row["source_refs"] for row in real_rows),
+                    *_flatten_refs(row["source_refs"] for row in hidden_rows),
+                    P1C_PENDING_SOURCE_REF,
+                ]
+            ),
+        }
+    if hidden_rows:
+        return {
+            "status": "data_pending",
+            "source_status": "data_pending",
+            "reason": (
+                "Only fixture fallback first-mover city rows exist for this bundle; "
+                "they are hidden until live or cached OSM benchmark counts are available."
+            ),
+            "real_count": 0,
+            "hidden_fixture_count": len(hidden_rows),
+            "source_errors": _source_errors(hidden_rows),
+            "source_refs": _unique_refs(
+                [
+                    *_flatten_refs(row["source_refs"] for row in hidden_rows),
+                    P1C_PENDING_SOURCE_REF,
+                ]
+            ),
+        }
+    return {
+        "status": "data_pending",
+        "source_status": "data_pending",
+        "reason": "No source-backed first-mover city counts have been computed for this bundle.",
+        "real_count": 0,
+        "hidden_fixture_count": 0,
+        "source_errors": ["bundle_first_mover_city_not_computed"],
+        "source_refs": [P1C_PENDING_SOURCE_REF],
+    }
+
+
+def _source_errors(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(row["source_error"])
+        for row in rows
+        if row.get("source_error")
+    ][:8]
+
+
+def _flatten_refs(ref_groups: Iterable[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    return [ref for refs in ref_groups for ref in refs]
 
 
 def _contacts_lateral_sql() -> str:

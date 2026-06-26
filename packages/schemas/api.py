@@ -139,6 +139,16 @@ class BundleFirstMoverCityItem(BaseModel):
     source_refs: list[dict[str, Any]]
 
 
+class BundleGlobalSignalStatus(BaseModel):
+    status: str
+    source_status: str
+    reason: str
+    real_count: int = 0
+    hidden_fixture_count: int = 0
+    source_errors: list[str] = Field(default_factory=list)
+    source_refs: list[dict[str, Any]]
+
+
 class BundlesResponse(BaseModel):
     items: list[BundleSummaryItem]
     meta: dict[str, Any]
@@ -149,3 +159,4 @@ class BundleDetailResponse(BundleSummaryItem):
     top_people: list[BundlePersonItem]
     worldwide_match: BundleWorldwideMatch | None = None
     first_mover_cities: list[BundleFirstMoverCityItem] = Field(default_factory=list)
+    first_mover_cities_status: BundleGlobalSignalStatus | None = None

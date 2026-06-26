@@ -167,9 +167,11 @@ export function BundleDetailPanel({
   const topPeople = detail?.top_people ?? [];
   const worldwide = detail?.worldwide_match ?? null;
   const firstMovers = detail?.first_mover_cities ?? [];
-  const firstMoversAreFixture = firstMovers.some(
-    (city) => city.source_status === "fixture_fallback",
-  );
+  const firstMoverStatus = detail?.first_mover_cities_status ?? null;
+  const worldwidePending =
+    worldwide?.source_status === "data_pending" || worldwide?.source_status === "fixture_fallback";
+  const firstMoversPending =
+    firstMoverStatus?.status === "data_pending" || firstMovers.some((city) => city.source_status === "fixture_fallback");
   const trendingLabel = formatPercent(numberComponent(bundle.components, "momentum") ?? bundle.score);
 
   return (
@@ -246,7 +248,11 @@ export function BundleDetailPanel({
         <h3>
           <Globe2 size={15} />
           <span className="wr-answer-q">Does it match a worldwide trend?</span>
-          {worldwide ? <b className="wr-answer-tag">{verdictLabel(worldwide.verdict)}</b> : null}
+          {worldwide ? (
+            <b className={`wr-answer-tag ${worldwidePending ? "is-pending" : ""}`}>
+              {verdictLabel(worldwide.verdict)}
+            </b>
+          ) : null}
         </h3>
         {worldwide ? (
           <div className="wr-worldwide">
@@ -262,7 +268,9 @@ export function BundleDetailPanel({
         <h3>
           <Globe2 size={15} />
           <span className="wr-answer-q">What do first-mover cities show?</span>
-          {firstMovers.length > 0 ? <b className="wr-answer-tag">{firstMovers.length} cities</b> : null}
+          <b className={`wr-answer-tag ${firstMoversPending ? "is-pending" : ""}`}>
+            {firstMovers.length > 0 ? `${firstMovers.length} cities` : firstMoverStatusLabel(firstMoverStatus)}
+          </b>
         </h3>
         <div className="wr-geo-list">
           {firstMovers.slice(0, 6).map((city) => (
@@ -278,12 +286,13 @@ export function BundleDetailPanel({
               </b>
             </div>
           ))}
-          {firstMovers.length === 0 ? <p>No first-mover city data yet.</p> : null}
+          {firstMovers.length === 0 ? (
+            <p>{firstMoverStatus?.reason ?? "No first-mover city data yet."}</p>
+          ) : null}
         </div>
-        {firstMoversAreFixture ? (
+        {firstMoverStatus?.hidden_fixture_count ? (
           <p className="wr-fixture-note">
-            Benchmark city counts are fixture estimates, not a live international feed — use for
-            directional comparison only.
+            Fixture benchmark rows are hidden until live or cached aggregate city counts are available.
           </p>
         ) : null}
       </div>
@@ -296,6 +305,12 @@ function verdictLabel(verdict: string): string {
 }
 
 function worldwideNarrative(match: WorldwideMatch): string {
+  if (match.source_status === "data_pending") {
+    const reason = typeof match.components?.reason === "string"
+      ? match.components.reason
+      : "Worldwide trend evidence has not been computed for this bundle.";
+    return `Worldwide trend match is data pending. ${reason}`;
+  }
   const direction =
     match.direction === "rising"
       ? "rising"
@@ -305,8 +320,20 @@ function worldwideNarrative(match: WorldwideMatch): string {
   const spread = match.components?.cities_with_supply;
   const spreadText =
     typeof spread === "number" ? ` Supplied in ${spread} of the benchmark cities.` : "";
-  const status = match.source_status === "fixture_fallback" ? " (fallback data)" : "";
+  const status =
+    match.source_status === "cached"
+      ? " (cached source data)"
+      : match.source_status === "fixture_fallback"
+        ? " (fallback data hidden from decisions)"
+        : "";
   return `Global attention is ${direction}; verdict: ${match.verdict}.${spreadText}${status}`;
+}
+
+function firstMoverStatusLabel(status: BundleDetail["first_mover_cities_status"]): string {
+  if (!status || status.status === "data_pending") {
+    return "Data Pending";
+  }
+  return status.status === "cached" ? "Cached" : "Live";
 }
 
 function firstMoverLabel(city: FirstMoverCity): string {
