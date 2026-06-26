@@ -30,9 +30,9 @@ The API filters out rows that do not have the required component values.
 ## CM5 Inputs
 
 - Supply: PostGIS-backed operator rows by category and CSD/neighborhood. Operators missing source-native neighborhoods are backfilled from reviewed City of Vancouver local-area polygons when point-in-polygon covers the point, then by nearest known neighborhood centroid with `neighborhood_assignment_method = 'nearest_centroid_approximate'`.
-- Demand proxy: live Statistics Canada 2021 Census Profile population denominator by CSD, normalized as `log1p(raw_population) / log1p(Vancouver CMA population)` to avoid saturating all large geographies at 1.0.
+- Demand proxy: live Statistics Canada 2021 Census Profile population denominator by CSD, normalized as `log1p(raw_population) / log1p(Vancouver CMA population)` to avoid saturating all large geographies at 1.0. For reviewed Vancouver local areas, P2A blends this population scale with demographic fit from City of Vancouver Census local-area profile attributes: `0.65 * base_population_demand + 0.35 * target_demo_fit`.
 - Business-count denominator: live Statistics Canada Table 33-10-1016-01 Canadian Business Counts with employees. CM5 uses the current table's available NAICS granularity and stores source vector/coordinate IDs in denominator payloads.
-- Target demo fit: average of normalized population demand and same-category business density per 10,000 residents, normalized against observed same-category business density rather than capped at 1.0.
+- Target demo fit: decomposed demographic signal using age-band distribution, households-with-children / family-density signal, income/affluence proxy, and same-category business intensity. The default target is selected by category, and API callers can retarget scorecards and heatmap rows with `target_demo=young_families|young_adults_20_39|affluent_35_55|retirees_55_plus|broad`.
 - Category growth: new operators observed in the 180-day window.
 - Event/community activity: source-backed signals in the 180-day window, plus event/job tables when populated.
 - Transit access: M3 centroid-to-core accessibility proxy derived from stored CSD centroids, not a real transit model.
@@ -48,7 +48,7 @@ Tables:
 - `opportunity_scorecard`
 - `category_velocity`
 
-Each `opportunity_heatmap_cell.trace_payload` stores denominator IDs, operator IDs, signal counts, raw population, raw business counts, density inputs, demand source status, and neighborhood allocation details where the cell is derived from a parent CSD.
+Each `opportunity_heatmap_cell.trace_payload` stores denominator IDs, operator IDs, signal counts, raw population, raw business counts, density inputs, demographic target details, demand source status, and neighborhood allocation details where the cell is derived from a parent CSD.
 
 ## Limitations After CM5
 

@@ -69,6 +69,8 @@ def test_operators_filter_by_venue_class(monkeypatch) -> None:
         {"name": "Vancouver", "operator_count": 1}
     ]
     assert body["items"][0]["venue_class"] == "public_recreation"
+    assert body["items"][0]["operator_class"] == "public_recreation"
+    assert body["items"][0]["regulated"] is False
     query, params = fake_conn.queries[0]
     assert "op.venue_class = %s" in query
     assert params[-2:] == ["public_recreation", 5]
@@ -80,6 +82,8 @@ def _operator_row() -> dict[str, Any]:
         "name": "Empire Fields",
         "categories": ["field_track_sports", "public_recreation"],
         "venue_class": "public_recreation",
+        "operator_class": "public_recreation",
+        "regulated": False,
         "status": "open",
         "address": "2901 East Hastings Street, Vancouver, BC",
         "municipality": "Vancouver",

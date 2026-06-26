@@ -285,6 +285,7 @@ def run_proposition_synthesis(
 
 def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
     trace = cast(dict[str, Any], row["trace_payload"] or {})
+    score_components = cast(dict[str, Any], row.get("component_breakdown") or {})
     source_refs = _unique_refs(cast(list[dict[str, Any]], row["source_refs"] or []))
     category = str(row["category"])
     category_label = CATEGORY_LABELS.get(category, category.replace("_", " "))
@@ -300,7 +301,13 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
     demand_source_status = str(trace.get("demand_source_status") or "unknown")
     spend_proxy = SPEND_PROXIES.get(category, DEFAULT_SPEND_PROXY)
     spend_proxy_value = spend_proxy.per_person_value()
-    market_size = (population or 0.0) * spend_proxy_value if population is not None else None
+    target_demo_fit = _optional_float(score_components.get("target_demo_fit"))
+    target_demo = str(trace.get("target_demo") or "category_default")
+    market_size = (
+        (population or 0.0) * spend_proxy_value * (target_demo_fit or 1.0)
+        if population is not None
+        else None
+    )
     confidence = _proposition_confidence(float(row["confidence_score"]), trace, spend_proxy)
     headline = f"{area}: source-backed {category_label} whitespace"
     population_evidence = _population_evidence(population, trace, geo_level, municipality)
@@ -310,6 +317,8 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
         proxy=spend_proxy,
         per_person_value=spend_proxy_value,
         market_size=market_size,
+        target_demo=target_demo,
+        target_demo_fit=target_demo_fit,
     )
     competitor_line = _competitor_line(nearest_competitors, competitor_count, radius_km)
     confidence_narrative = _confidence_narrative(
@@ -348,6 +357,8 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
             "label": market_sizing_line,
             "raw_value": round(market_size, 2) if market_size is not None else None,
             "proxy_value_per_person": round(spend_proxy_value, 2),
+            "target_demo": target_demo,
+            "target_demo_fit": target_demo_fit,
             "source_refs": spend_proxy.source_refs,
         },
         {
@@ -402,6 +413,8 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
             "population_evidence": population_evidence,
             "business_evidence": business_evidence,
             "market_sizing_line": market_sizing_line,
+            "target_demo": target_demo,
+            "target_demo_fit": target_demo_fit,
             "nearest_competitors": nearest_competitors,
             "confidence_narrative": confidence_narrative,
             "spend_proxy": {
@@ -454,16 +467,25 @@ def _market_sizing_line(
     proxy: SpendProxy,
     per_person_value: float,
     market_size: float | None,
+    target_demo: str,
+    target_demo_fit: float | None,
 ) -> str:
+    demo_clause = (
+        f" x target-demo fit {target_demo_fit:.2f} ({target_demo})"
+        if target_demo_fit is not None
+        else ""
+    )
     if population is None or market_size is None:
         return (
             f"Catchment spend context: unknown catchment population x "
-            f"{_format_money(per_person_value)} per-person {proxy.label.lower()}; "
+            f"{_format_money(per_person_value)} per-person {proxy.label.lower()}"
+            f"{demo_clause}; "
             "context unavailable until the population denominator is present."
         )
     return (
         f"Catchment spend context: {_format_number(population, 'people')} x "
-        f"{_format_money(per_person_value)} per-person {proxy.label.lower()} = "
+        f"{_format_money(per_person_value)} per-person {proxy.label.lower()}"
+        f"{demo_clause} = "
         f"{_format_money(market_size)} of annual household spending in the catchment "
         "(context for demand, not capturable revenue)."
     )

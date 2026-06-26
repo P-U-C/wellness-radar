@@ -16,6 +16,10 @@ from apps.jobs.analytics.bundles import (
     _match_operator,
 )
 from apps.jobs.analytics.category_hygiene import category_operator_is_allowed
+from apps.jobs.analytics.demographics import (
+    demand_proxy_from_population_fit,
+    demographic_fit_breakdown,
+)
 from apps.jobs.analytics.scoring import (
     CITY_VANCOUVER_LOCAL_AREA_PROFILE_REF,
     canonical_municipality_for_neighborhood,
@@ -36,7 +40,10 @@ OPPORTUNITY_METHOD = (
     "log1p(raw population) against the live CMA population denominator and normalizes "
     "business intensity against observed same-category business density. P0 scoring "
     "uses deduped operators and a per-capita saturation curve for low_supply_density "
-    "so mature dense categories score down instead of reading as under-supplied."
+    "so mature dense categories score down instead of reading as under-supplied. "
+    "P2A blends population demand with source-backed neighborhood demographic fit "
+    "where City of Vancouver Census local-area age, family, and income attributes "
+    "are available."
 )
 NEIGHBORHOOD_METHOD = (
     "CM3 neighborhood extension: supply is counted from BC-gated operators carrying "
@@ -1006,12 +1013,21 @@ def _payload_for_cell(
     population = float(geo["population"])
     business_count = float(denominator["value"])
     supply_count = len(operators)
-    demand_proxy = _log_normalize(population, max_population)
+    base_population_demand = _log_normalize(population, max_population)
     low_supply_density = supply_sparsity_score(float(row["density"]))
     category_growth = _clamp(row["new_operators"] / max(max_growth, 1))
     business_density = float(row.get("business_density") or 0.0)
     business_intensity = _clamp(business_density / max(max_business_density, 0.0001))
-    target_demo_fit = _clamp((demand_proxy + business_intensity) / 2)
+    target_fit = demographic_fit_breakdown(
+        category=category,
+        geo_name=str(geo["geo_name"]),
+        business_intensity=business_intensity,
+    )
+    target_demo_fit = float(target_fit["fit"])
+    demand_proxy = demand_proxy_from_population_fit(
+        base_population_demand,
+        target_demo_fit,
+    )
     transit_access = _core_access_proxy(geo["lat"], geo["lng"])
     event_community_activity = _clamp(row["signal_count"] / max(max_activity, 1))
     demand = row.get("demand", {})
@@ -1043,6 +1059,7 @@ def _payload_for_cell(
             *list(denominator["source_refs"]),
             *_flatten_refs(operator["source_refs"] for operator in operators),
             *row["signal_refs"],
+            *list(target_fit.get("source_refs") or []),
         ]
     )
     calculation_method = (
@@ -1052,8 +1069,13 @@ def _payload_for_cell(
     )
     component_breakdown = {
         **components.as_dict(),
+        "category": category,
+        "geo_name": str(geo["geo_name"]),
+        "target_demo_fit_components": target_fit,
         "formula": calculation_method,
         "inputs": {
+            "category": category,
+            "geo_name": str(geo["geo_name"]),
             "population_denominator_id": geo["population_denominator_id"],
             "business_denominator_id": denominator["id"],
             "operator_ids": operator_ids,
@@ -1061,7 +1083,19 @@ def _payload_for_cell(
             "supply_density_per_10000_population": round(row["density"], 4),
             "business_density_per_10000_population": round(business_density, 4),
             "business_density_normalized": round(business_intensity, 4),
+            "base_population_demand": round(base_population_demand, 4),
             "population_demand_normalization": "log1p(raw_population) / log1p(CMA_population)",
+            "demographic_demand_adjustment": (
+                "demand_proxy = 0.65 * base_population_demand + "
+                "0.35 * target_demo_fit"
+            ),
+            "target_demo": target_fit["target_demo"],
+            "target_demo_requested": target_fit["requested_target_demo"],
+            "demographics": (
+                target_fit.get("demographics")
+                if target_fit.get("source_status") == "official_neighborhood_demographics"
+                else None
+            ),
             "competitor_count_within_radius": row.get(
                 "competitor_count_within_radius", supply_count
             ),

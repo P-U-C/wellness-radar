@@ -1914,3 +1914,30 @@ live/free sources.
 The legacy `peer_city_trends_fixture` data remains stored for deterministic job
 tests, but it is no longer presented as live demand or a breakout signal by the
 API/UI default path.
+
+## P2A
+
+### Scope
+
+Added a demographic demand layer for reviewed Vancouver local areas using the
+City of Vancouver 2016 Census local-area profile source. Opportunity scorecards
+now blend population demand with decomposed target-demo fit across age-band,
+family-density, income, and business-intensity components. The analytics API can
+retarget this layer with `target_demo=young_families|young_adults_20_39|affluent_35_55|retirees_55_plus|broad`.
+
+Operators now carry `operator_class`, `regulated`, and source-backed
+classification reasons so medical-adjacent operators such as medical aesthetics,
+clinic, injectable, IV, RMT, physio, chiropractic, and naturopathic businesses
+are separated from fitness, retail, personal-service, and public-recreation
+venues.
+
+### Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner venue_classification
+PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
+PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
+```

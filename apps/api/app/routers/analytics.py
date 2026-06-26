@@ -6,10 +6,15 @@ from fastapi import APIRouter, Query
 
 from apps.api.app.db.connection import get_connection
 from apps.api.app.services.freshness import age_hours
+from apps.jobs.analytics.demographics import TARGET_DEMOS, retarget_component_breakdown
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 MAX_WHITESPACE_LIMIT = 500
 MAX_SCORECARD_LIMIT = 100
+TARGET_DEMO_PATTERN = (
+    "^(category_default|broad|young_families|young_adults_20_39|"
+    "affluent_35_55|retirees_55_plus)$"
+)
 
 REQUIRED_OPPORTUNITY_COMPONENTS = {
     "demand_proxy",
@@ -26,9 +31,11 @@ REQUIRED_OPPORTUNITY_COMPONENTS = {
 def whitespace_heatmap(
     category: str = Query(default="recovery_contrast_therapy"),
     geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),
+    target_demo: str = Query(default="category_default", pattern=TARGET_DEMO_PATTERN),
     limit: int = Query(default=100, ge=1),
 ) -> dict[str, Any]:
     active_limit = min(limit, MAX_WHITESPACE_LIMIT)
+    fetch_limit = MAX_WHITESPACE_LIMIT if target_demo != "category_default" else active_limit
     clauses = [
         "category = %s",
         "jsonb_array_length(source_refs) > 0",
@@ -39,7 +46,7 @@ def whitespace_heatmap(
     if geo_level:
         clauses.append("geo_level = %s")
         params.append(geo_level)
-    params.append(active_limit)
+    params.append(fetch_limit)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
@@ -73,12 +80,14 @@ def whitespace_heatmap(
             ).fetchall(),
         )
     return {
-        "items": [_heatmap_item(row) for row in rows],
+        "items": _ranked_heatmap_items(rows, target_demo=target_demo, limit=active_limit),
         "meta": {
-            "count": len(rows),
+            "count": min(len(rows), active_limit),
             "limit": active_limit,
             "requested_limit": limit,
             "max_limit": MAX_WHITESPACE_LIMIT,
+            "target_demo": target_demo,
+            "available_target_demos": list(TARGET_DEMOS),
         },
     }
 
@@ -87,9 +96,11 @@ def whitespace_heatmap(
 def opportunity_scorecards(
     category: str = Query(default="recovery_contrast_therapy"),
     geo_level: str | None = Query(default=None, pattern="^(CSD|neighborhood)$"),
+    target_demo: str = Query(default="category_default", pattern=TARGET_DEMO_PATTERN),
     limit: int = Query(default=10, ge=1),
 ) -> dict[str, Any]:
     active_limit = min(limit, MAX_SCORECARD_LIMIT)
+    fetch_limit = MAX_SCORECARD_LIMIT if target_demo != "category_default" else active_limit
     clauses = [
         "category = %s",
         "jsonb_array_length(source_refs) > 0",
@@ -100,7 +111,7 @@ def opportunity_scorecards(
     if geo_level:
         clauses.append("geo_level = %s")
         params.append(geo_level)
-    params.append(active_limit)
+    params.append(fetch_limit)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
@@ -128,12 +139,14 @@ def opportunity_scorecards(
             ).fetchall(),
         )
     return {
-        "items": [_scorecard_item(row) for row in rows],
+        "items": _ranked_scorecard_items(rows, target_demo=target_demo, limit=active_limit),
         "meta": {
-            "count": len(rows),
+            "count": min(len(rows), active_limit),
             "limit": active_limit,
             "requested_limit": limit,
             "max_limit": MAX_SCORECARD_LIMIT,
+            "target_demo": target_demo,
+            "available_target_demos": list(TARGET_DEMOS),
         },
     }
 
@@ -228,6 +241,14 @@ def analytics_methodology() -> dict[str, Any]:
                 "10,000 population using a saturation curve. Dense mature categories score "
                 "down instead of being rewarded for relative rank inside their own category."
             ),
+            "demand_component": (
+                "P2A demand_proxy blends population scale with target_demo_fit where "
+                "reviewed City of Vancouver local-area Census demographic attributes are "
+                "available. target_demo_fit is decomposed into age-band, family-density, "
+                "income, and business-intensity signals and can be retargeted with the "
+                "target_demo query parameter."
+            ),
+            "target_demo_options": list(TARGET_DEMOS),
             "caveat": (
                 "White-space is a source-backed supply-demand signal, not guaranteed "
                 "economic attractiveness."
@@ -308,6 +329,44 @@ def _scorecard_item(row: dict[str, Any]) -> dict[str, Any]:
         "freshness_at": row["generated_at"].isoformat(),
         "freshness_age_hours": age_hours(row["generated_at"]),
     }
+
+
+def _ranked_heatmap_items(
+    rows: list[dict[str, Any]],
+    *,
+    target_demo: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    items = [_with_retargeted_score(_heatmap_item(row), target_demo) for row in rows]
+    return sorted(
+        items,
+        key=lambda item: (-float(item["opportunity_score"]), str(item["geo_name"]).lower()),
+    )[:limit]
+
+
+def _ranked_scorecard_items(
+    rows: list[dict[str, Any]],
+    *,
+    target_demo: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    items = [_with_retargeted_score(_scorecard_item(row), target_demo) for row in rows]
+    return sorted(
+        items,
+        key=lambda item: (-float(item["opportunity_score"]), str(item["geo_name"]).lower()),
+    )[:limit]
+
+
+def _with_retargeted_score(item: dict[str, Any], target_demo: str) -> dict[str, Any]:
+    if target_demo == "category_default":
+        return item
+    components, score = retarget_component_breakdown(item["component_breakdown"], target_demo)
+    item["component_breakdown"] = components
+    item["opportunity_score"] = score
+    item["calculation_method"] = (
+        f"{item['calculation_method']} Retargeted target_demo={target_demo}."
+    )
+    return item
 
 
 def _velocity_item(row: dict[str, Any]) -> dict[str, Any]:

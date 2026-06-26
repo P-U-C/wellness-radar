@@ -81,3 +81,64 @@ def test_category_velocity_returns_numeric_zero_counts(monkeypatch) -> None:
     query, params = fake_conn.queries[0]
     assert "COALESCE(cv.new_operator_count, 0)" in query
     assert params == ["spa_thermal"]
+
+
+def test_opportunity_scorecards_can_retarget_demographic_fit(monkeypatch) -> None:
+    row = {
+        "id": "score_marpole_womens",
+        "category": "womens_health",
+        "geo_code": "nh_marpole",
+        "geo_name": "Marpole",
+        "geo_level": "neighborhood",
+        "opportunity_score": 0.5,
+        "component_breakdown": {
+            "category": "womens_health",
+            "geo_name": "Marpole",
+            "demand_proxy": 0.7,
+            "low_supply_density": 1.0,
+            "category_growth": 0.0,
+            "target_demo_fit": 0.5,
+            "transit_access": 0.8,
+            "event_community_activity": 0.0,
+            "source_confidence": 0.9,
+            "target_demo_fit_components": {
+                "target_demo": "young_families",
+                "source_status": "official_neighborhood_demographics",
+            },
+            "inputs": {
+                "category": "womens_health",
+                "geo_name": "Marpole",
+                "base_population_demand": 0.7,
+                "business_density_normalized": 0.25,
+            },
+        },
+        "source_refs": [SOURCE_REF],
+        "confidence_score": 0.8,
+        "calculation_method": "formula",
+        "caveat": "test",
+        "generated_at": datetime(2026, 6, 26, 12, 0, tzinfo=timezone.utc),
+    }
+    fake_conn = FakeConn([row])
+
+    @contextmanager
+    def fake_connection() -> Iterator[FakeConn]:
+        yield fake_conn
+
+    monkeypatch.setattr(analytics, "get_connection", fake_connection)
+    app = FastAPI()
+    app.include_router(analytics.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/analytics/opportunity-scorecards"
+        "?category=womens_health&target_demo=affluent_35_55"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    item = body["items"][0]
+    fit = item["component_breakdown"]["target_demo_fit_components"]
+    assert body["meta"]["target_demo"] == "affluent_35_55"
+    assert fit["target_demo"] == "affluent_35_55"
+    assert item["component_breakdown"]["target_demo_fit"] != 0.5
+    assert "Retargeted target_demo=affluent_35_55" in item["calculation_method"]

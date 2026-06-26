@@ -15,6 +15,8 @@ class OperatorItem(BaseModel):
     name: str
     categories: list[str]
     venue_class: str
+    operator_class: str = "unknown"
+    regulated: bool = False
     status: str
     address: str | None
     municipality: str | None
@@ -79,6 +81,8 @@ class BundleMemberItem(BaseModel):
     name: str
     categories: list[str]
     venue_class: str
+    operator_class: str = "unknown"
+    regulated: bool = False
     status: str
     address: str | None
     municipality: str | None
