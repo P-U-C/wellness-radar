@@ -40,7 +40,12 @@ class OrgBookBCEnrichmentAdapter:
     def fetch_for_operator(self, operator_name: str) -> dict[str, Any]:
         response = self.client.get(
             self.search_url,
-            params={"q": operator_name, "page_size": 10},
+            params={
+                "q": operator_name,
+                "inactive": "false",
+                "latest": "true",
+                "page_size": 10,
+            },
         )
         response.raise_for_status()
         return response.json()

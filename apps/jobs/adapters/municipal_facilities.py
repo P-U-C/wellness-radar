@@ -41,6 +41,7 @@ class MunicipalSource:
     address_fields: tuple[str, ...] = ("address", "ADDRESS", "LOCATION", "OPERATING_LOCATION")
     neighborhood_fields: tuple[str, ...] = ("neighbourhoodname", "COMMUNITY")
     extra_tags: dict[str, str] = field(default_factory=dict)
+    force_public_recreation: bool = True
 
 
 class MunicipalFacilitiesAdapter:
@@ -59,7 +60,10 @@ class MunicipalFacilitiesAdapter:
         client: httpx.Client | None = None,
         sources: tuple[MunicipalSource, ...] | None = None,
         fixture_dir: Path | None = FIXTURE_DIR,
+        source_name: str | None = None,
     ) -> None:
+        if source_name is not None:
+            self.name = source_name
         self.limit = limit
         self.client = client or httpx.Client(
             timeout=60.0,
@@ -112,7 +116,9 @@ class MunicipalFacilitiesAdapter:
             source.get("category_hint"),
             *(str(value) for value in tags.values()),
         )
-        if "public_recreation" not in categories:
+        if "public_recreation" not in categories and bool(
+            source.get("force_public_recreation", True)
+        ):
             categories.append("public_recreation")
         if not categories:
             return []
@@ -343,6 +349,7 @@ def _annotate_raw(
         "address_fields": source.address_fields,
         "neighborhood_fields": source.neighborhood_fields,
         "extra_tags": source.extra_tags,
+        "force_public_recreation": source.force_public_recreation,
     }
     annotated["_source_status"] = source_status
     if source_error:
@@ -474,6 +481,85 @@ def _clean(value: Any) -> str | None:
 
 MUNICIPAL_SOURCES: tuple[MunicipalSource, ...] = (
     MunicipalSource(
+        key="new_westminster_business_licences",
+        registry_name="municipal_facilities_new_westminster",
+        label="City of New Westminster business licences",
+        municipality="New Westminster",
+        kind="arcgis_geojson",
+        url=(
+            "https://services3.arcgis.com/A7O8YnTNtzRPIn7T/arcgis/rest/services/"
+            "BUSINESS_LICENSES/FeatureServer/0"
+        ),
+        source_url=(
+            "https://data-60320-newwestcity.opendata.arcgis.com/datasets/"
+            "newwestcity::business-licenses-all"
+        ),
+        licence="Open Government Licence - New Westminster",
+        category_hint="wellness or fitness business licence",
+        where=(
+            "NAICS_CODE LIKE '713%' OR NAICS_CODE LIKE '8121%' OR NAICS_CODE LIKE '6213%' "
+            "OR NAICS_DESCRIPTION LIKE '%Fitness%' OR NAICS_DESCRIPTION LIKE '%Health%' "
+            "OR NAICS_DESCRIPTION LIKE '%Personal care%' OR BUSINESS_NAME LIKE '%FITNESS%' "
+            "OR BUSINESS_NAME LIKE '%YOGA%' OR BUSINESS_NAME LIKE '%SPA%' "
+            "OR BUSINESS_NAME LIKE '%WELLNESS%'"
+        ),
+        name_fields=("BUSINESS_NAME", "LICENCEE_NAME"),
+        facility_fields=("NAICS_DESCRIPTION", "NAICS_CODE"),
+        address_fields=("CIVIC_ADDRESS", "MAILING_ADDRESS"),
+        extra_tags={"source_record_type": "business_licence"},
+        force_public_recreation=False,
+    ),
+    MunicipalSource(
+        key="delta_business_licences",
+        registry_name="municipal_facilities_delta",
+        label="City of Delta business licences",
+        municipality="Delta",
+        kind="arcgis_geojson",
+        url=(
+            "https://services9.arcgis.com/w2mu7sRltY6PiQ7J/arcgis/rest/services/"
+            "Business_Licenses/FeatureServer/0"
+        ),
+        source_url="https://opendata-deltabc.hub.arcgis.com/datasets/a77ef0a02cc14bf1b6d5dd8e66991784_0",
+        licence="Open Government Licence - Delta",
+        category_hint="wellness or fitness business licence",
+        where=(
+            "TRADE_NAICS_CODE = '713940' OR BUSINESS_TYPE LIKE '%Fitness%' "
+            "OR BUSINESS_TYPE LIKE '%Massage%' OR BUSINESS_TYPE LIKE '%Spa%' "
+            "OR BUSINESS_TYPE LIKE '%Physio%' OR BUSINESS_TYPE LIKE '%Yoga%' "
+            "OR TRADE_NAME LIKE '%FITNESS%' OR TRADE_NAME LIKE '%YOGA%' "
+            "OR TRADE_NAME LIKE '%SPA%' OR TRADE_NAME LIKE '%WELLNESS%' "
+            "OR TRADE_NAME LIKE '%MASSAGE%' OR TRADE_NAME LIKE '%PHYSIO%' "
+            "OR TRADE_NAME LIKE '%RMT%'"
+        ),
+        name_fields=("TRADE_NAME",),
+        facility_fields=("BUSINESS_TYPE", "TRADE_NAICS_CODE"),
+        address_fields=("ADDRESS",),
+        extra_tags={"source_record_type": "business_licence"},
+        force_public_recreation=False,
+    ),
+    MunicipalSource(
+        key="north_vancouver_district_parks",
+        registry_name="municipal_facilities_north_vancouver",
+        label="District of North Vancouver parks and recreation amenities",
+        municipality="North Vancouver",
+        kind="arcgis_geojson",
+        url="https://geoweb.dnv.org/arcgis/rest/services/Basemap_ParksAppV2/MapServer/0",
+        source_url="https://geoweb.dnv.org/data/",
+        licence="Open Government Licence - North Vancouver",
+        category_hint="public recreation park",
+        where=(
+            "Baseball = 1 OR Basketball = 1 OR Cricket_Pitch = 1 OR Lacrosse = 1 "
+            "OR Multi_Purpose = 1 OR Pitch_N_Putt = 1 OR Soccer = 1 OR Skateboard = 1 "
+            "OR Tennis = 1 OR Practice_Court = 1 OR Rec_Pool = 1 OR Fitness_Trail = 1 "
+            "OR Playground = 1 OR Water_Park = 1 OR Swimming = 1 OR Change_Rooms = 1 "
+            "OR Washrooms = 1"
+        ),
+        name_fields=("Park_Name",),
+        facility_fields=(),
+        address_fields=(),
+        extra_tags={"leisure": "park", "source_record_type": "park_recreation_amenity"},
+    ),
+    MunicipalSource(
         key="west_vancouver_parks",
         registry_name="municipal_facilities_west_vancouver",
         label="District of West Vancouver parks open data",
@@ -564,17 +650,6 @@ MUNICIPAL_SOURCES: tuple[MunicipalSource, ...] = (
         municipality="Richmond",
         kind="needs_review",
         url="https://www.richmond.ca/services/digital/maps.htm",
-        licence="needs_review",
-        category_hint="public recreation",
-        enabled=False,
-    ),
-    MunicipalSource(
-        key="north_vancouver_needs_review",
-        registry_name="municipal_facilities_north_vancouver",
-        label="North Vancouver recreation facilities",
-        municipality="North Vancouver",
-        kind="needs_review",
-        url="https://geoweb.dnv.org/data/",
         licence="needs_review",
         category_hint="public recreation",
         enabled=False,

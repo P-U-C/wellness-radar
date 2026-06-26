@@ -12,9 +12,13 @@ from psycopg.types.json import Jsonb
 
 from apps.api.app.config import settings
 from apps.api.app.services.audit import write_audit_log
+from apps.jobs.adapters.bc_data_catalogue import BCDataCatalogueAdapter
+from apps.jobs.adapters.city_vancouver_building_permits import (
+    CityVancouverBuildingPermitsAdapter,
+)
 from apps.jobs.adapters.city_vancouver_licences import CityVancouverBusinessLicencesAdapter
 from apps.jobs.adapters.manual_seed import ManualRecoverySeedAdapter
-from apps.jobs.adapters.municipal_facilities import MunicipalFacilitiesAdapter
+from apps.jobs.adapters.municipal_facilities import MUNICIPAL_SOURCES, MunicipalFacilitiesAdapter
 from apps.jobs.adapters.orgbook_bc import OrgBookBCEnrichmentAdapter
 from apps.jobs.adapters.osm_overpass import OsmOverpassAdapter
 from apps.jobs.adapters.rss import (
@@ -927,6 +931,9 @@ class InMemoryRepository:
             RssFeedAdapter.name,
             BCGovHealthNewsAdapter.name,
             HealthCanadaRecallsAdapter.name,
+            CityVancouverBuildingPermitsAdapter.name,
+            BCDataCatalogueAdapter.name,
+            *{source.registry_name for source in MUNICIPAL_SOURCES},
             "manual_people_csv",
         }
         if source_name not in known_sources:
@@ -1378,7 +1385,37 @@ def run_event_adapter(adapter: Any, repository: RunnerRepository | None = None) 
             raw_payload_id = repo.upsert_raw_payload(adapter.name, source_record_id, raw)
             event_pairs = adapter.normalize(raw, raw_payload_id)
             for event, signal in event_pairs:
-                if getattr(adapter, "text_gate", False):
+                if getattr(adapter, "geo_aware", False):
+                    gate_record = CanonicalGeoRecord(
+                        source_name=event.source_name,
+                        title=event.title,
+                        address=str(raw.get("address") or raw.get("CSD Name") or "") or None,
+                        municipality=str(
+                            raw.get("municipality")
+                            or raw.get("city")
+                            or raw.get("CSD Name")
+                            or event.payload.get("geo_name")
+                            or ""
+                        )
+                        or None,
+                        province=str(raw.get("province") or "BC"),
+                        country=str(raw.get("country") or "CA"),
+                        lat=event.lat,
+                        lng=event.lng,
+                        text=str(event.payload.get("bc_gate_text") or event.payload),
+                        statcan_geo_code=(
+                            str(event.payload.get("geo_code"))
+                            if event.payload.get("geo_code")
+                            else None
+                        ),
+                        raw=raw,
+                    )
+                    gate = bc_gate(gate_record, repo)
+                    if not gate.passes:
+                        repo.write_rejection(gate_record, gate, raw_payload_id)
+                        metrics.records_rejected += 1
+                        continue
+                elif getattr(adapter, "text_gate", False):
                     gate_record = CanonicalGeoRecord(
                         source_name=event.source_name,
                         title=event.title,
@@ -1456,7 +1493,8 @@ def run_orgbook_enrichment(
                 match=match,
             )
             repo.upsert_organization(organization)
-            repo.update_operator_organization(operator.id, organization.id, match.orgbook_id)
+            if match.orgbook_id:
+                repo.update_operator_organization(operator.id, organization.id, match.orgbook_id)
             metrics.records_persisted += 1
             event = SourceEventRecord(
                 id=stable_id("evt", adapter.name, operator.id, "orgbook_match"),
@@ -1528,8 +1566,21 @@ def _parse_utc_datetime(value: str | None) -> datetime | None:
 def adapter_for_name(name: str, limit: int) -> Any:
     if name in {"city_vancouver_licences", CityVancouverBusinessLicencesAdapter.name}:
         return CityVancouverBusinessLicencesAdapter(limit=limit)
+    if name in {"city_vancouver_building_permits", CityVancouverBuildingPermitsAdapter.name}:
+        return CityVancouverBuildingPermitsAdapter(limit=limit)
+    if name in {"bc_data_catalogue", BCDataCatalogueAdapter.name}:
+        return BCDataCatalogueAdapter(limit=limit)
     if name in {"manual_seed", ManualRecoverySeedAdapter.name}:
         return ManualRecoverySeedAdapter(limit=limit)
+    municipal_sources = tuple(
+        source for source in MUNICIPAL_SOURCES if source.registry_name == name
+    )
+    if municipal_sources:
+        return MunicipalFacilitiesAdapter(
+            limit=limit,
+            sources=municipal_sources,
+            source_name=name,
+        )
     if name in {"municipal_facilities", MunicipalFacilitiesAdapter.name}:
         return MunicipalFacilitiesAdapter(limit=limit)
     if name in {"osm", "osm_overpass", OsmOverpassAdapter.name}:
@@ -1550,8 +1601,13 @@ def main() -> None:
         choices=[
             "city_vancouver_licences",
             "city_vancouver_business_licences",
+            "city_vancouver_building_permits",
+            "bc_data_catalogue",
             "manual_seed",
             "municipal_facilities",
+            "municipal_facilities_new_westminster",
+            "municipal_facilities_delta",
+            "municipal_facilities_north_vancouver",
             "osm_overpass",
             "local_rss",
             "bc_gov_news_rss",
@@ -1583,7 +1639,13 @@ def main() -> None:
     parser.add_argument("--window-days", type=int, default=90)
     args = parser.parse_args()
 
-    if args.adapter in {"local_rss", "bc_gov_news_rss", "health_canada_recalls"}:
+    if args.adapter in {
+        "local_rss",
+        "bc_gov_news_rss",
+        "health_canada_recalls",
+        "city_vancouver_building_permits",
+        "bc_data_catalogue",
+    }:
         metrics = run_event_adapter(adapter_for_name(args.adapter, args.limit))
         print(_metrics_dict(metrics))
         return
@@ -1720,6 +1782,8 @@ def run_m2_sequence(limit: int = 100, people_csv: Path | None = None) -> dict[st
     for adapter in operator_adapters:
         results[adapter.name] = _run_safely(lambda adapter=adapter: run_adapter(adapter))
     event_adapters: list[Any] = [
+        CityVancouverBuildingPermitsAdapter(limit=limit),
+        BCDataCatalogueAdapter(limit=limit),
         RssFeedAdapter(limit=limit),
         BCGovHealthNewsAdapter(limit=limit),
         HealthCanadaRecallsAdapter(limit=limit),
