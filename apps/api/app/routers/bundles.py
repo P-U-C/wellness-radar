@@ -156,6 +156,8 @@ def get_bundle(bundle_id: str) -> dict[str, Any]:
                   op.address,
                   op.municipality,
                   op.neighborhood,
+                  op.is_mobile,
+                  op.service_area,
                   op.phone,
                   op.website,
                   op.social_links,
@@ -169,10 +171,12 @@ def get_bundle(bundle_id: str) -> dict[str, Any]:
                   bom.match_reasons,
                   bom.source_refs AS membership_source_refs,
                   bom.confidence_score AS membership_confidence_score,
-                  contacts.contacts
+                  contacts.contacts,
+                  bundle_tags.primary_bundles
                 FROM bundle_operator_membership bom
                 JOIN "operator" op ON op.id = bom.operator_id
                 LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+                LEFT JOIN LATERAL ({_primary_bundles_lateral_sql()}) bundle_tags ON TRUE
                 WHERE bom.bundle_id = %s
                   AND op.geom IS NOT NULL
                   AND jsonb_array_length(op.source_refs) > 0
@@ -301,6 +305,9 @@ def _member_item(row: dict[str, Any]) -> dict[str, Any]:
         "address": row["address"],
         "municipality": row["municipality"],
         "neighborhood": row["neighborhood"],
+        "is_mobile": bool(row.get("is_mobile")),
+        "service_area": row.get("service_area"),
+        "primary_bundles": row.get("primary_bundles") or [],
         "lat": float(row["lat"]),
         "lng": float(row["lng"]),
         "phone": row.get("phone"),
@@ -516,6 +523,29 @@ def _contacts_lateral_sql() -> str:
       ) AS contacts
       FROM operator_contact oc
       WHERE oc.operator_id = op.id
+    """
+
+
+def _primary_bundles_lateral_sql() -> str:
+    return """
+      SELECT COALESCE(
+        jsonb_agg(
+          jsonb_build_object(
+            'id', b.id,
+            'slug', b.slug,
+            'label', b.label,
+            'confidence_score', bom_all.confidence_score,
+            'source_refs', bom_all.source_refs
+          )
+          ORDER BY bom_all.confidence_score DESC, b.label ASC
+        ),
+        '[]'::jsonb
+      ) AS primary_bundles
+      FROM bundle_operator_membership bom_all
+      JOIN bundle b ON b.id = bom_all.bundle_id
+      WHERE bom_all.operator_id = op.id
+        AND jsonb_array_length(bom_all.source_refs) > 0
+        AND jsonb_array_length(b.source_refs) > 0
     """
 
 

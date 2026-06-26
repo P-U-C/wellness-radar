@@ -142,3 +142,58 @@ def test_opportunity_scorecards_can_retarget_demographic_fit(monkeypatch) -> Non
     assert fit["target_demo"] == "affluent_35_55"
     assert item["component_breakdown"]["target_demo_fit"] != 0.5
     assert "Retargeted target_demo=affluent_35_55" in item["calculation_method"]
+
+
+def test_proximity_endpoint_scores_colocation(monkeypatch) -> None:
+    row = {
+        "id": "op_recover",
+        "name": "Recover Lab Mobility",
+        "categories": ["recovery_modalities"],
+        "municipality": "Vancouver",
+        "neighborhood": "Mount Pleasant",
+        "lat": 49.267,
+        "lng": -123.1,
+        "source_refs": [SOURCE_REF],
+        "confidence_score": 0.84,
+        "nearby_count": 1,
+        "min_distance_km": 0.25,
+        "nearby_operators": [
+            {
+                "operator_id": "op_strength",
+                "name": "Iron Lab Strength",
+                "categories": ["fitness_movement"],
+                "municipality": "Vancouver",
+                "neighborhood": "Mount Pleasant",
+                "distance_km": 0.25,
+                "source_refs": [SOURCE_REF],
+                "confidence_score": 0.9,
+            }
+        ],
+    }
+    fake_conn = FakeConn([row])
+
+    @contextmanager
+    def fake_connection() -> Iterator[FakeConn]:
+        yield fake_conn
+
+    monkeypatch.setattr(analytics, "get_connection", fake_connection)
+    app = FastAPI()
+    app.include_router(analytics.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/analytics/proximity?category=recovery_modalities"
+        "&near_category=fitness_movement&radius_km=1"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    item = body["items"][0]
+    assert item["operator_id"] == "op_recover"
+    assert item["near_category"] == "fitness_movement"
+    assert item["nearby_operators"][0]["name"] == "Iron Lab Strength"
+    assert item["proximity_score"] == 0.75
+    assert item["source_refs"]
+    query, params = fake_conn.queries[0]
+    assert "ST_DWithin(subject.geom, ref.geom" in query
+    assert params == ["recovery_modalities", "fitness_movement", 1000.0, 100]

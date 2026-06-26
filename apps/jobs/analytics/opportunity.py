@@ -43,7 +43,9 @@ OPPORTUNITY_METHOD = (
     "so mature dense categories score down instead of reading as under-supplied. "
     "P2A blends population demand with source-backed neighborhood demographic fit "
     "where City of Vancouver Census local-area age, family, and income attributes "
-    "are available."
+    "are available. P2B counts mobile/service-area operators against declared "
+    "service-area municipalities or neighborhoods instead of only their storefront "
+    "point."
 )
 NEIGHBORHOOD_METHOD = (
     "CM3 neighborhood extension: supply is counted from BC-gated operators carrying "
@@ -198,6 +200,8 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                   op.categories,
                   op.address,
                   op.venue_class,
+                  op.is_mobile,
+                  op.service_area,
                   op.municipality,
                   op.neighborhood,
                   ST_Y(op.geom::geometry) AS lat,
@@ -253,6 +257,8 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                   categories,
                   address,
                   venue_class,
+                  is_mobile,
+                  service_area,
                   source_refs,
                   confidence_score,
                   municipality,
@@ -284,6 +290,8 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                   categories,
                   address,
                   venue_class,
+                  is_mobile,
+                  service_area,
                   source_refs,
                   confidence_score,
                   municipality,
@@ -1052,6 +1060,15 @@ def _payload_for_cell(
         source_confidence=round(source_confidence, 4),
     )
     operator_ids = [str(operator["id"]) for operator in operators]
+    mobile_operator_ids = [
+        str(operator["id"]) for operator in operators if _is_mobile_operator(operator)
+    ]
+    service_area_operator_ids = [
+        str(operator["id"])
+        for operator in operators
+        if _is_mobile_operator(operator) and _service_area(operator)
+    ]
+    primary_bundles = _primary_bundle_slugs_for_operators(operators)
     source_refs = _unique_refs(
         [
             *list(geo["geography_source_refs"]),
@@ -1079,6 +1096,10 @@ def _payload_for_cell(
             "population_denominator_id": geo["population_denominator_id"],
             "business_denominator_id": denominator["id"],
             "operator_ids": operator_ids,
+            "mobile_operator_ids": mobile_operator_ids,
+            "service_area_operator_ids": service_area_operator_ids,
+            "service_area_supply_count": len(service_area_operator_ids),
+            "primary_bundles": primary_bundles,
             "signal_count_180d": row["signal_count"],
             "supply_density_per_10000_population": round(row["density"], 4),
             "business_density_per_10000_population": round(business_density, 4),
@@ -1157,14 +1178,20 @@ def _neighborhood_rows_for_category(
         raw_municipality = _clean_text(operator.get("municipality"))
         neighborhood = _clean_text(operator.get("neighborhood"))
         municipality = canonical_municipality_for_neighborhood(raw_municipality, neighborhood)
-        if not municipality or not neighborhood:
-            continue
-        if (
-            _optional_float(operator.get("lat")) is None
+        if not _is_mobile_operator(operator) and (
+            not municipality
+            or not neighborhood
+            or _optional_float(operator.get("lat")) is None
             or _optional_float(operator.get("lng")) is None
         ):
             continue
-        grouped[(_key(municipality), _key(neighborhood))].append(operator)
+        for key in _operator_neighborhood_targets(
+            operator,
+            municipality=municipality,
+            neighborhood=neighborhood,
+            neighborhood_context=neighborhood_context,
+        ):
+            grouped[key].append(operator)
 
     rows: list[dict[str, Any]] = []
     for (municipality_key, neighborhood_key), operators in grouped.items():
@@ -1180,7 +1207,11 @@ def _neighborhood_rows_for_category(
             method_refs=method_refs or _category_method_refs(category),
         )
         municipality = str(parent_geo["geo_name"])
-        neighborhood = _clean_text(operators[0].get("neighborhood")) or neighborhood_key
+        neighborhood = _display_neighborhood_name(
+            municipality_key,
+            neighborhood_key,
+            neighborhood_context,
+        )
         total_tagged = int(
             neighborhood_context["counts_by_municipality"].get(municipality_key, len(operators))
         )
@@ -1370,6 +1401,8 @@ def _neighborhood_denominator_context(
     counts_by_municipality: dict[str, int] = defaultdict(int)
     counts_by_key: dict[tuple[str, str], int] = defaultdict(int)
     neighborhoods_by_municipality: dict[str, set[str]] = defaultdict(set)
+    municipality_names: dict[str, str] = {}
+    neighborhood_names_by_key: dict[tuple[str, str], str] = {}
     for operator in operators:
         neighborhood = _clean_text(operator.get("neighborhood"))
         municipality = canonical_municipality_for_neighborhood(
@@ -1379,6 +1412,8 @@ def _neighborhood_denominator_context(
             continue
         municipality_key = _key(municipality)
         neighborhood_key = _key(neighborhood)
+        municipality_names[municipality_key] = municipality
+        neighborhood_names_by_key[(municipality_key, neighborhood_key)] = neighborhood
         counts_by_municipality[municipality_key] += 1
         counts_by_key[(municipality_key, neighborhood_key)] += 1
         neighborhoods_by_municipality[municipality_key].add(neighborhood_key)
@@ -1389,6 +1424,12 @@ def _neighborhood_denominator_context(
             municipality: len(neighborhoods)
             for municipality, neighborhoods in neighborhoods_by_municipality.items()
         },
+        "neighborhoods_by_municipality": {
+            municipality: sorted(neighborhoods)
+            for municipality, neighborhoods in neighborhoods_by_municipality.items()
+        },
+        "municipality_names": municipality_names,
+        "neighborhood_names_by_key": neighborhood_names_by_key,
     }
 
 
@@ -1401,7 +1442,117 @@ def _operators_for_csd(
         for operator in operators
         if _key(operator.get("municipality")) == geo_key
         or _key(operator.get("neighborhood")) == geo_key
+        or _service_area_covers_municipality(operator, geo_name)
     ]
+
+
+def _operator_neighborhood_targets(
+    operator: dict[str, Any],
+    *,
+    municipality: str | None,
+    neighborhood: str | None,
+    neighborhood_context: dict[str, Any],
+) -> list[tuple[str, str]]:
+    direct_key = (
+        (_key(municipality), _key(neighborhood))
+        if municipality and neighborhood
+        else None
+    )
+    if not _is_mobile_operator(operator):
+        return [direct_key] if direct_key else []
+
+    targets: set[tuple[str, str]] = set()
+    service_area = _service_area(operator)
+    for entry in _service_area_neighborhoods(service_area):
+        entry_name = _clean_text(entry.get("name"))
+        entry_municipality = _clean_text(entry.get("municipality")) or municipality
+        if entry_name and entry_municipality:
+            targets.add((_key(entry_municipality), _key(entry_name)))
+
+    covered_municipality_keys = {
+        _key(name) for name in _service_area_municipalities(service_area)
+    }
+    service_type = str((service_area or {}).get("type") or "")
+    if service_type == "metro_region":
+        covered_municipality_keys.update(
+            str(key)
+            for key in neighborhood_context.get("neighborhoods_by_municipality", {})
+        )
+    for municipality_key in covered_municipality_keys:
+        for neighborhood_key in neighborhood_context.get(
+            "neighborhoods_by_municipality", {}
+        ).get(municipality_key, []):
+            targets.add((municipality_key, str(neighborhood_key)))
+
+    if not targets and direct_key:
+        targets.add(direct_key)
+    return sorted(targets)
+
+
+def _display_neighborhood_name(
+    municipality_key: str,
+    neighborhood_key: str,
+    neighborhood_context: dict[str, Any],
+) -> str:
+    names = neighborhood_context.get("neighborhood_names_by_key", {})
+    name = names.get((municipality_key, neighborhood_key)) if isinstance(names, dict) else None
+    return str(name or neighborhood_key.replace("_", " ").title())
+
+
+def _is_mobile_operator(operator: dict[str, Any]) -> bool:
+    return bool(operator.get("is_mobile"))
+
+
+def _service_area(operator: dict[str, Any]) -> dict[str, Any] | None:
+    value = operator.get("service_area")
+    return value if isinstance(value, dict) else None
+
+
+def _service_area_municipalities(service_area: dict[str, Any] | None) -> list[str]:
+    if not service_area:
+        return []
+    municipalities = service_area.get("municipalities") or []
+    if not isinstance(municipalities, list):
+        return []
+    return [str(name) for name in municipalities if str(name).strip()]
+
+
+def _service_area_neighborhoods(
+    service_area: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not service_area:
+        return []
+    neighborhoods = service_area.get("neighborhoods") or []
+    if not isinstance(neighborhoods, list):
+        return []
+    return [item for item in neighborhoods if isinstance(item, dict)]
+
+
+def _service_area_covers_municipality(operator: dict[str, Any], municipality: str) -> bool:
+    if not _is_mobile_operator(operator):
+        return False
+    service_area = _service_area(operator)
+    if not service_area:
+        return False
+    service_type = str(service_area.get("type") or "")
+    if service_type == "metro_region":
+        return True
+    municipality_key = _key(municipality)
+    return any(
+        _key(name) == municipality_key
+        for name in _service_area_municipalities(service_area)
+    )
+
+
+def _primary_bundle_slugs_for_operators(operators: Sequence[dict[str, Any]]) -> list[str]:
+    slugs: set[str] = set()
+    for operator in operators:
+        for definition in BUNDLE_TAXONOMY:
+            if str(operator.get("venue_class") or "unknown") != definition.venue_class:
+                continue
+            if _match_operator(definition, operator) is not None:
+                slugs.add(definition.slug)
+    return sorted(slugs)
 
 
 def _competitors_within_radius(

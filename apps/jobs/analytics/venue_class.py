@@ -54,9 +54,12 @@ COMMERCIAL_CATEGORIES = {
     "combat_sports",
     "mind_meditation",
     "spa_thermal",
+    "aesthetics_medspa",
     "nutrition_longevity",
     "allied_health",
     "womens_health",
+    "social_hospitality",
+    "recovery_modalities",
     "preventive_diagnostic",
     "mental_health",
     "community_social_wellness",
@@ -147,8 +150,10 @@ COMMERCIAL_KEYWORDS = (
     "chiro",
     "clinic",
     "cold plunge",
+    "compression therapy",
     "contrast",
     "cosmetic",
+    "coworking wellness",
     "crossfit",
     "cryotherapy",
     "diagnostic",
@@ -163,10 +168,15 @@ COMMERCIAL_KEYWORDS = (
     "kickboxing",
     "longevity",
     "massage",
+    "med spa",
+    "medspa",
+    "mobility",
+    "normatec",
     "naturopath",
     "pilates",
     "physio",
     "recovery",
+    "sober social",
     "reformer",
     "sauna",
     "spa",
@@ -174,6 +184,8 @@ COMMERCIAL_KEYWORDS = (
     "studio",
     "training",
     "wellness",
+    "wellness cafe",
+    "wellness coworking",
     "yoga",
 )
 MEDICAL_ADJACENT_KEYWORDS = (
@@ -194,13 +206,25 @@ MEDICAL_ADJACENT_KEYWORDS = (
     "injectable",
     "injectables",
     "iv",
+    "lactation",
     "laboratory",
     "laser clinic",
+    "medical aesthetics",
+    "med spa",
+    "medspa",
+    "microneedling",
+    "midwife",
+    "midwifery",
     "medical",
     "medical aesthetics",
     "naturopath",
     "naturopathic",
+    "pelvic floor",
     "physio",
+    "postnatal",
+    "postpartum",
+    "pregnancy",
+    "prenatal",
     "physiotherapist",
     "physiotherapy",
     "rmt",
@@ -232,14 +256,21 @@ RETAIL_KEYWORDS = (
 PERSONAL_SERVICE_KEYWORDS = (
     "bathhouse",
     "cold plunge",
+    "compression therapy",
     "contrast",
     "cryotherapy",
     "float",
     "massage",
+    "mobility",
+    "normatec",
+    "percussion therapy",
     "sauna",
+    "sober social",
     "spa",
     "steam",
     "thermal",
+    "wellness cafe",
+    "wellness coworking",
 )
 PUBLIC_KEYWORDS = (
     "aquatic centre",
@@ -476,6 +507,7 @@ def operator_class_reason(operator: dict[str, Any]) -> dict[str, Any]:
         categories.intersection(
             {
                 "allied_health",
+                "aesthetics_medspa",
                 "mental_health",
                 "nutrition_longevity",
                 "preventive_diagnostic",
@@ -490,7 +522,14 @@ def operator_class_reason(operator: dict[str, Any]) -> dict[str, Any]:
     )
     retail_categories = sorted(categories.intersection({"wellness_retail_product"}))
     personal_service_categories = sorted(
-        categories.intersection({"recovery_contrast_therapy", "spa_thermal"})
+        categories.intersection(
+            {
+                "recovery_contrast_therapy",
+                "spa_thermal",
+                "recovery_modalities",
+                "social_hospitality",
+            }
+        )
     )
     public_categories = sorted(categories.intersection(PUBLIC_CATEGORIES))
 

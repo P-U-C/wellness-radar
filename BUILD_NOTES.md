@@ -1941,3 +1941,47 @@ PYTHONPATH=. python3 -m apps.jobs.runner venue_classification
 PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
 PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
 ```
+
+## P2B
+
+### Scope
+
+Added the missing P2B taxonomy/model surfaces for G12/G13:
+
+- New source-backed taxonomy categories and rules: `aesthetics_medspa`,
+  expanded `womens_health`, `social_hospitality`, and `recovery_modalities`.
+  The P2B migration seeds `category_classification_rule` with source refs to
+  `docs/persona-gap-review/GAP_REPORT.md#G12`, updates category constraints,
+  and backfills known name-evidence operators such as QUEST Medical Aesthetics
+  and pregnancy/prenatal/postnatal operators into the correct categories.
+- Operators now support `is_mobile` and optional `service_area`. Normalizers
+  infer mobile service models from source text such as mobile, at-home,
+  in-home, house-call, onsite, and Metro Vancouver service-area language.
+- Opportunity analytics counts mobile/service-area operators against declared
+  municipalities/neighborhoods rather than only a storefront point. Heatmap
+  trace payloads expose `mobile_operator_ids`, `service_area_operator_ids`,
+  `service_area_supply_count`, and `primary_bundles`.
+- Added `/analytics/proximity` for co-location theses such as recovery modality
+  operators within N km of fitness operators. Responses include nearby reference
+  operators, distance, proximity score, and combined source refs.
+- Added `/organizations` and `/employers` as a minimal OrgBook-linked
+  organization/employer directory. It returns name, registry/OrgBook ids,
+  linked operator location, and nullable `headcount`, `industry`, and
+  `industry_code` fields. Null means no source-backed public field was present.
+- Bundle synthesis now includes P2B bundles for med-spa, women/postnatal,
+  social hospitality, and recovery modalities. Operator/proposition API payloads
+  expose multiple `primary_bundles` instead of forcing hybrid concepts into one
+  tag.
+
+### Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner venue_classification
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
+PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner people_graph
+```

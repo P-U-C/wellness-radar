@@ -32,12 +32,15 @@ CATEGORY_TARGET_DEMO: dict[str, TargetDemo] = {
     "boutique_strength": "young_adults_20_39",
     "mind_meditation": "young_adults_20_39",
     "community_social_wellness": "young_adults_20_39",
+    "social_hospitality": "young_adults_20_39",
     "longevity_iv": "affluent_35_55",
     "nutrition_longevity": "affluent_35_55",
     "preventive_diagnostic": "affluent_35_55",
+    "aesthetics_medspa": "affluent_35_55",
     "spa_thermal": "affluent_35_55",
     "allied_health": "broad",
     "recovery_contrast_therapy": "broad",
+    "recovery_modalities": "young_adults_20_39",
     "cold_plunge_contrast_therapy": "broad",
 }
 

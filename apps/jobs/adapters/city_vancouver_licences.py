@@ -11,6 +11,7 @@ from packages.shared.dedupe import choose_best_name
 from packages.shared.ids import stable_id
 from packages.shared.normalizers import (
     compact_address,
+    infer_service_model,
     normalize_categories,
     normalize_name,
     normalize_status,
@@ -79,6 +80,13 @@ class CityVancouverBusinessLicencesAdapter:
         )
         if not categories:
             return []
+        is_mobile, service_area = infer_service_model(
+            raw.get("businessname"),
+            raw.get("businesstradename"),
+            raw.get("businesstype"),
+            raw.get("businesssubtype"),
+            raw.get("businessdescription"),
+        )
 
         street_address = compact_address(
             _unit_label(raw),
@@ -185,6 +193,8 @@ class CityVancouverBusinessLicencesAdapter:
                 source_refs=refs,
                 confidence_score=confidence,
                 occurred_at=occurred_at,
+                is_mobile=is_mobile,
+                service_area=service_area,
                 phone=normalized_phone,
                 website=normalized_website,
                 contacts=contacts,

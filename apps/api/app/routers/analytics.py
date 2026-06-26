@@ -11,6 +11,7 @@ from apps.jobs.analytics.demographics import TARGET_DEMOS, retarget_component_br
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 MAX_WHITESPACE_LIMIT = 500
 MAX_SCORECARD_LIMIT = 100
+MAX_PROXIMITY_LIMIT = 250
 TARGET_DEMO_PATTERN = (
     "^(category_default|broad|young_families|young_adults_20_39|"
     "affluent_35_55|retirees_55_plus)$"
@@ -227,6 +228,116 @@ def category_velocity(
     return {"items": [_velocity_item(row) for row in rows], "meta": {"count": len(rows)}}
 
 
+@router.get("/proximity")
+def operator_proximity(
+    category: str = Query(default="recovery_modalities"),
+    near_category: str = Query(default="fitness_movement"),
+    radius_km: float = Query(default=1.0, ge=0.1, le=25.0),
+    limit: int = Query(default=100, ge=1),
+) -> dict[str, Any]:
+    active_limit = min(limit, MAX_PROXIMITY_LIMIT)
+    radius_m = radius_km * 1000
+    with get_connection() as conn:
+        rows = cast(
+            list[dict[str, Any]],
+            conn.execute(
+                """
+                WITH subject AS (
+                  SELECT
+                    op.id,
+                    op.name,
+                    op.categories,
+                    op.municipality,
+                    op.neighborhood,
+                    op.source_refs,
+                    op.confidence_score,
+                    op.geom
+                  FROM "operator" op
+                  WHERE %s = ANY(op.categories)
+                    AND op.geom IS NOT NULL
+                    AND jsonb_array_length(op.source_refs) > 0
+                ),
+                nearby AS (
+                  SELECT
+                    subject.id AS subject_id,
+                    ref.id AS operator_id,
+                    ref.name,
+                    ref.categories,
+                    ref.municipality,
+                    ref.neighborhood,
+                    ST_Distance(subject.geom, ref.geom) / 1000.0 AS distance_km,
+                    ref.source_refs,
+                    ref.confidence_score
+                  FROM subject
+                  JOIN "operator" ref
+                    ON ref.id <> subject.id
+                   AND %s = ANY(ref.categories)
+                   AND ref.geom IS NOT NULL
+                   AND jsonb_array_length(ref.source_refs) > 0
+                   AND ST_DWithin(subject.geom, ref.geom, %s)
+                )
+                SELECT
+                  subject.id,
+                  subject.name,
+                  subject.categories,
+                  subject.municipality,
+                  subject.neighborhood,
+                  ST_Y(subject.geom::geometry) AS lat,
+                  ST_X(subject.geom::geometry) AS lng,
+                  subject.source_refs,
+                  subject.confidence_score,
+                  count(nearby.operator_id)::int AS nearby_count,
+                  min(nearby.distance_km) AS min_distance_km,
+                  COALESCE(
+                    jsonb_agg(
+                      jsonb_build_object(
+                        'operator_id', nearby.operator_id,
+                        'name', nearby.name,
+                        'categories', nearby.categories,
+                        'municipality', nearby.municipality,
+                        'neighborhood', nearby.neighborhood,
+                        'distance_km', round(nearby.distance_km::numeric, 3),
+                        'source_refs', nearby.source_refs,
+                        'confidence_score', nearby.confidence_score
+                      )
+                      ORDER BY nearby.distance_km ASC, nearby.name ASC
+                    ) FILTER (WHERE nearby.operator_id IS NOT NULL),
+                    '[]'::jsonb
+                  ) AS nearby_operators
+                FROM subject
+                JOIN nearby ON nearby.subject_id = subject.id
+                GROUP BY
+                  subject.id,
+                  subject.name,
+                  subject.categories,
+                  subject.municipality,
+                  subject.neighborhood,
+                  subject.geom,
+                  subject.source_refs,
+                  subject.confidence_score
+                ORDER BY nearby_count DESC, min_distance_km ASC, subject.name ASC
+                LIMIT %s
+                """,
+                [category, near_category, radius_m, active_limit],
+            ).fetchall(),
+        )
+    return {
+        "items": [
+            _proximity_item(row, radius_km=radius_km, near_category=near_category)
+            for row in rows
+        ],
+        "meta": {
+            "count": len(rows),
+            "category": category,
+            "near_category": near_category,
+            "radius_km": radius_km,
+            "limit": active_limit,
+            "requested_limit": limit,
+            "max_limit": MAX_PROXIMITY_LIMIT,
+        },
+    }
+
+
 @router.get("/methodology")
 def analytics_methodology() -> dict[str, Any]:
     return {
@@ -239,7 +350,9 @@ def analytics_methodology() -> dict[str, Any]:
             "supply_component": (
                 "low_supply_density is computed from deduped same-category operators per "
                 "10,000 population using a saturation curve. Dense mature categories score "
-                "down instead of being rewarded for relative rank inside their own category."
+                "down instead of being rewarded for relative rank inside their own category. "
+                "Mobile/service-area operators count against declared service municipalities "
+                "or neighborhoods rather than only a storefront point."
             ),
             "demand_component": (
                 "P2A demand_proxy blends population scale with target_demo_fit where "
@@ -280,6 +393,17 @@ def analytics_methodology() -> dict[str, Any]:
             "governance": (
                 "Public professional data only; no private, patient, LinkedIn, "
                 "or social-firehose data."
+            ),
+        },
+        "proximity": {
+            "formula": (
+                "operator proximity score = max(0, 1 - nearest_reference_distance_km / "
+                "radius_km); rows are source-backed operators within the requested "
+                "radius of a source-backed reference category."
+            ),
+            "caveat": (
+                "Co-location is a proximity thesis input, not proof of partnership "
+                "or demand."
             ),
         },
     }
@@ -385,3 +509,60 @@ def _velocity_item(row: dict[str, Any]) -> dict[str, Any]:
         "freshness_at": row["calculated_at"].isoformat(),
         "freshness_age_hours": age_hours(row["calculated_at"]),
     }
+
+
+def _proximity_item(
+    row: dict[str, Any],
+    *,
+    radius_km: float,
+    near_category: str,
+) -> dict[str, Any]:
+    nearby = list(row.get("nearby_operators") or [])
+    min_distance = (
+        float(row["min_distance_km"]) if row.get("min_distance_km") is not None else None
+    )
+    proximity_score = (
+        round(max(0.0, 1 - (min_distance / radius_km)), 4)
+        if min_distance is not None and radius_km > 0
+        else 0.0
+    )
+    source_refs = _unique_refs(
+        [
+            *list(row["source_refs"] or []),
+            *[
+                ref
+                for operator in nearby
+                for ref in operator.get("source_refs", [])
+                if isinstance(ref, dict)
+            ],
+        ]
+    )
+    return {
+        "operator_id": row["id"],
+        "name": row["name"],
+        "categories": row["categories"],
+        "municipality": row["municipality"],
+        "neighborhood": row["neighborhood"],
+        "lat": float(row["lat"]),
+        "lng": float(row["lng"]),
+        "near_category": near_category,
+        "nearby_count": int(row["nearby_count"] or 0),
+        "min_distance_km": round(min_distance, 3) if min_distance is not None else None,
+        "radius_km": radius_km,
+        "proximity_score": proximity_score,
+        "nearby_operators": nearby,
+        "source_refs": source_refs,
+        "confidence_score": float(row["confidence_score"]),
+    }
+
+
+def _unique_refs(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for ref in refs:
+        key = "|".join(str(ref.get(field)) for field in ("source_name", "url", "source_record_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(ref)
+    return unique

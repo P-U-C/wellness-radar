@@ -77,6 +77,9 @@ def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
             if row.get("neighborhood_assignment_confidence") is not None
             else None
         ),
+        "is_mobile": bool(row.get("is_mobile")),
+        "service_area": row.get("service_area"),
+        "primary_bundles": row.get("primary_bundles") or [],
         "confidence_score": float(row["confidence_score"]),
         "source_refs": row["source_refs"],
         "freshness_at": iso_or_none(row.get("last_seen_at")),
@@ -141,15 +144,19 @@ def list_operators(
         op.neighborhood_assignment_method,
         op.neighborhood_assignment_source,
         op.neighborhood_assignment_confidence,
+        op.is_mobile,
+        op.service_area,
         ST_Y(op.geom::geometry) AS lat,
         ST_X(op.geom::geometry) AS lng,
         op.confidence_score,
         op.source_refs,
         op.last_seen_at,
-        contacts.contacts
+        contacts.contacts,
+        bundle_tags.primary_bundles
       FROM "operator" op
       LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()}) derived_neighborhood ON TRUE
       LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+      LEFT JOIN LATERAL ({_primary_bundles_lateral_sql()}) bundle_tags ON TRUE
       WHERE {where_sql}
       ORDER BY op.last_seen_at DESC, op.name ASC
       LIMIT %s
@@ -248,6 +255,8 @@ def get_operator(operator_id: str) -> dict[str, Any]:
                   op.neighborhood_assignment_method,
                   op.neighborhood_assignment_source,
                   op.neighborhood_assignment_confidence,
+                  op.is_mobile,
+                  op.service_area,
                   ST_Y(op.geom::geometry) AS lat,
                   ST_X(op.geom::geometry) AS lng,
                   op.confidence_score,
@@ -255,11 +264,13 @@ def get_operator(operator_id: str) -> dict[str, Any]:
                   op.licence_ref,
                   op.first_seen_at,
                   op.last_seen_at,
-                  contacts.contacts
+                  contacts.contacts,
+                  bundle_tags.primary_bundles
                 FROM "operator" op
                 LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()})
                   derived_neighborhood ON TRUE
                 LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+                LEFT JOIN LATERAL ({_primary_bundles_lateral_sql()}) bundle_tags ON TRUE
                 WHERE op.id = %s
                   AND op.geom IS NOT NULL
                   AND jsonb_array_length(op.source_refs) > 0
@@ -454,12 +465,15 @@ def _lead_select_sql(where_sql: str, *, include_order: bool = True) -> str:
         op.neighborhood_assignment_method,
         op.neighborhood_assignment_source,
         op.neighborhood_assignment_confidence,
+        op.is_mobile,
+        op.service_area,
         ST_Y(op.geom::geometry) AS lat,
         ST_X(op.geom::geometry) AS lng,
         op.confidence_score,
         op.source_refs,
         op.last_seen_at,
         contacts.contacts,
+        bundle_tags.primary_bundles,
         contacts.contact_count,
         COALESCE(signal_counts.signal_count, 0) AS signal_count,
         opportunity.geo_name AS opportunity_geo_name,
@@ -469,6 +483,7 @@ def _lead_select_sql(where_sql: str, *, include_order: bool = True) -> str:
       LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()})
         derived_neighborhood ON TRUE
       LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+      LEFT JOIN LATERAL ({_primary_bundles_lateral_sql()}) bundle_tags ON TRUE
       LEFT JOIN LATERAL (
         SELECT count(*)::int AS signal_count
         FROM signal s
@@ -523,6 +538,10 @@ def _category_for_bundle(bundle: str | None) -> str | None:
         "longevity_iv": "nutrition_longevity",
         "allied_health_bodywork": "allied_health",
         "social_wellness_clubs": "community_social_wellness",
+        "social_hospitality": "social_hospitality",
+        "aesthetics_medspa": "aesthetics_medspa",
+        "womens_health": "womens_health",
+        "recovery_modalities": "recovery_modalities",
         "mind_breathwork": "mind_meditation",
         "wellness_retail": "wellness_retail_product",
     }
@@ -549,6 +568,29 @@ def _contacts_lateral_sql() -> str:
         count(oc.id)::int AS contact_count
       FROM operator_contact oc
       WHERE oc.operator_id = op.id
+    """
+
+
+def _primary_bundles_lateral_sql() -> str:
+    return """
+      SELECT COALESCE(
+        jsonb_agg(
+          jsonb_build_object(
+            'id', b.id,
+            'slug', b.slug,
+            'label', b.label,
+            'confidence_score', bom.confidence_score,
+            'source_refs', bom.source_refs
+          )
+          ORDER BY bom.confidence_score DESC, b.label ASC
+        ),
+        '[]'::jsonb
+      ) AS primary_bundles
+      FROM bundle_operator_membership bom
+      JOIN bundle b ON b.id = bom.bundle_id
+      WHERE bom.operator_id = op.id
+        AND jsonb_array_length(bom.source_refs) > 0
+        AND jsonb_array_length(b.source_refs) > 0
     """
 
 

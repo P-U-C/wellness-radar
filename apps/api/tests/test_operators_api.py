@@ -71,6 +71,9 @@ def test_operators_filter_by_venue_class(monkeypatch) -> None:
     assert body["items"][0]["venue_class"] == "public_recreation"
     assert body["items"][0]["operator_class"] == "public_recreation"
     assert body["items"][0]["regulated"] is False
+    assert body["items"][0]["is_mobile"] is False
+    assert body["items"][0]["service_area"] is None
+    assert body["items"][0]["primary_bundles"][0]["slug"] == "public-recreation-courts-fields"
     query, params = fake_conn.queries[0]
     assert "op.venue_class = %s" in query
     assert params[-2:] == ["public_recreation", 5]
@@ -96,6 +99,17 @@ def _operator_row() -> dict[str, Any]:
         "neighborhood_assignment_method": None,
         "neighborhood_assignment_source": None,
         "neighborhood_assignment_confidence": None,
+        "is_mobile": False,
+        "service_area": None,
+        "primary_bundles": [
+            {
+                "id": "bundle_public_recreation_courts_fields",
+                "slug": "public-recreation-courts-fields",
+                "label": "Public recreation courts & fields",
+                "confidence_score": 0.9,
+                "source_refs": [SOURCE_REF],
+            }
+        ],
         "lat": 49.285,
         "lng": -123.036,
         "confidence_score": 0.88,

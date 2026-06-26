@@ -24,6 +24,9 @@ class OperatorItem(BaseModel):
     neighborhood_assignment_method: str | None = None
     neighborhood_assignment_source: str | None = None
     neighborhood_assignment_confidence: float | None = None
+    is_mobile: bool = False
+    service_area: dict[str, Any] | None = None
+    primary_bundles: list[dict[str, Any]] = Field(default_factory=list)
     lat: float
     lng: float
     confidence_score: float
@@ -87,6 +90,9 @@ class BundleMemberItem(BaseModel):
     address: str | None
     municipality: str | None
     neighborhood: str | None
+    is_mobile: bool = False
+    service_area: dict[str, Any] | None = None
+    primary_bundles: list[dict[str, Any]] = Field(default_factory=list)
     lat: float
     lng: float
     phone: str | None = None
@@ -164,3 +170,19 @@ class BundleDetailResponse(BundleSummaryItem):
     worldwide_match: BundleWorldwideMatch | None = None
     first_mover_cities: list[BundleFirstMoverCityItem] = Field(default_factory=list)
     first_mover_cities_status: BundleGlobalSignalStatus | None = None
+
+
+class OrganizationItem(BaseModel):
+    id: str
+    role: str = "organization"
+    name: str
+    registry_id: str | None = None
+    orgbook_id: str | None = None
+    organization_type: str | None = None
+    website: str | None = None
+    location: dict[str, Any] | None = None
+    headcount: int | None = None
+    industry: str | None = None
+    industry_code: str | None = None
+    source_refs: list[dict[str, Any]]
+    confidence_score: float

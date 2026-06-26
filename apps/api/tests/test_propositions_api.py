@@ -71,6 +71,7 @@ def test_propositions_endpoint_returns_written_evidence(monkeypatch) -> None:
         "supporting_signals": [
             {"kind": "population", "label": "44,150 people", "source_refs": [SOURCE_REF]}
         ],
+        "primary_bundles": ["cold_plunge_contrast_therapy", "recovery_modalities"],
         "component_breakdown": {"inputs": {"demand_source_status": "fixture_fallback"}},
         "opportunity_score": 0.78,
         "confidence_score": 0.63,
@@ -104,4 +105,8 @@ def test_propositions_endpoint_returns_written_evidence(monkeypatch) -> None:
     assert item["confidence"] == 0.63
     assert item["source_refs"] == [SOURCE_REF]
     assert item["supporting_signals"][0]["kind"] == "population"
+    assert item["primary_bundles"] == [
+        "cold_plunge_contrast_therapy",
+        "recovery_modalities",
+    ]
     assert "prop.geo_level = %s" in fake_conn.queries[0][0]

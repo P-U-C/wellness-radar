@@ -281,6 +281,16 @@ CATEGORY_BUSINESS_NAICS = {
         "label": "Personal care services",
         "confidence": 0.9,
     },
+    "aesthetics_medspa": {
+        "code": "8121",
+        "label": "Personal care services",
+        "confidence": 0.78,
+    },
+    "recovery_modalities": {
+        "code": "7139",
+        "label": "Other amusement and recreation industries",
+        "confidence": 0.72,
+    },
     "nutrition_longevity": {
         "code": "6213",
         "label": "Offices of other health practitioners",
@@ -311,6 +321,11 @@ CATEGORY_BUSINESS_NAICS = {
         "label": "Civic and social organizations",
         "confidence": 0.8,
     },
+    "social_hospitality": {
+        "code": "8134",
+        "label": "Civic and social organizations",
+        "confidence": 0.62,
+    },
     "wellness_retail_product": {
         "code": "4561",
         "label": "Health and personal care retailers",
@@ -336,6 +351,18 @@ EMPLOYMENT_SIZE_BUSINESS_NAICS = (
         "code": "8121",
         "label": "Personal care services",
         "confidence": 0.88,
+    },
+    {
+        "category": "aesthetics_medspa",
+        "code": "8121",
+        "label": "Personal care services",
+        "confidence": 0.76,
+    },
+    {
+        "category": "recovery_modalities",
+        "code": "7139",
+        "label": "Other amusement and recreation industries",
+        "confidence": 0.7,
     },
     {
         "category": "allied_health",

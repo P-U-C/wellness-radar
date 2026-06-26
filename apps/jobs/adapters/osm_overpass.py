@@ -9,7 +9,12 @@ from packages.geo.bc_gate import BC_BBOX
 from packages.schemas.canonical import CanonicalOperator
 from packages.shared.contacts import build_contact_method
 from packages.shared.ids import stable_id
-from packages.shared.normalizers import compact_address, normalize_categories, normalize_name
+from packages.shared.normalizers import (
+    compact_address,
+    infer_service_model,
+    normalize_categories,
+    normalize_name,
+)
 from packages.shared.provenance import source_ref
 
 
@@ -67,6 +72,15 @@ class OsmOverpassAdapter:
         )
         if not categories:
             return []
+        is_mobile, service_area = infer_service_model(
+            name,
+            tags.get("description"),
+            tags.get("service"),
+            tags.get("service_area"),
+            tags.get("delivery"),
+            tags.get("healthcare"),
+            tags.get("massage"),
+        )
 
         source_record_id = self.source_record_id(raw)
         lat = _float_or_none(raw.get("lat") or (raw.get("center") or {}).get("lat"))
@@ -152,6 +166,8 @@ class OsmOverpassAdapter:
                 source_refs=refs,
                 confidence_score=confidence,
                 occurred_at=datetime.now(timezone.utc),
+                is_mobile=is_mobile,
+                service_area=service_area,
                 phone=normalized_phone,
                 website=normalized_website,
                 social_links=social_links,
