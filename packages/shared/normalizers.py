@@ -91,14 +91,21 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
         "allied_health",
         (
             "health care",
+            "healthcare",
+            "chiropractor",
             "chiropractic",
+            "physiotherapist",
             "physiotherapy",
             "physio",
             "acupuncture",
+            "acupuncturist",
             "naturopath",
+            "naturopathic",
             "kinesiology",
+            "kinesiologist",
             "clinic",
             "practitioner",
+            "rmt",
         ),
     ),
 ]
@@ -138,11 +145,17 @@ def normalize_categories(*values: str | None) -> list[str]:
     text = " ".join(value or "" for value in values).lower()
     categories: list[str] = []
     for category, keywords in CATEGORY_KEYWORDS:
-        if any(keyword in text for keyword in keywords):
+        if any(_contains_keyword(text, keyword) for keyword in keywords):
             categories.append(category)
     if not categories and ("health" in text or "wellness" in text):
         categories.append("allied_health")
     return categories
+
+
+def _contains_keyword(text: str, keyword: str) -> bool:
+    normalized_text = f" {normalize_name(text)} "
+    normalized_keyword = normalize_name(keyword)
+    return bool(normalized_keyword and f" {normalized_keyword} " in normalized_text)
 
 
 def compact_address(*parts: str | None) -> str | None:

@@ -525,7 +525,11 @@ def _confidence_narrative(
     if "fixture" in str(trace.get("demand_source_status") or trace.get("demand_source")):
         modifiers.append("demand denominator is fixture-backed")
     if str(trace.get("denominator_scope") or "CSD") != "CSD":
-        modifiers.append("neighborhood values are allocated from parent CSD denominators")
+        status = str(trace.get("population_estimation_status") or "estimated")
+        if status == "official_neighborhood":
+            modifiers.append("neighborhood population uses official local-area data")
+        else:
+            modifiers.append("neighborhood values are estimated from parent CSD denominators")
     modifiers.append(f"spend proxy is broad ({spend_proxy.label})")
     if competitor_count == 0:
         modifiers.append("no named competitors were found in-radius")
@@ -548,6 +552,11 @@ def _population_evidence(
 ) -> str:
     formatted = _format_number(population, "people")
     if geo_level == "neighborhood":
+        status = str(trace.get("population_estimation_status") or "estimated")
+        method = str(trace.get("population_estimation_method") or "").strip()
+        if status == "official_neighborhood":
+            suffix = f" ({method})" if method else ""
+            return f"{formatted} official local-area population{suffix}"
         parent_population = _format_number(
             _optional_float(trace.get("raw_parent_population")), "people"
         )

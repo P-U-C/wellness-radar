@@ -10,6 +10,12 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from apps.jobs.analytics.category_hygiene import bundle_match_is_allowed
+from apps.jobs.analytics.scoring import (
+    dedupe_operators,
+    matched_keywords,
+    supply_sparsity_score,
+)
 from apps.jobs.analytics.venue_class import (
     VENUE_CLASS_COMMERCIAL,
     VENUE_CLASS_PUBLIC,
@@ -20,10 +26,11 @@ from apps.jobs.runner import RunMetrics
 from packages.shared.ids import slugify, stable_id
 from packages.shared.normalizers import normalize_name
 
-BUNDLE_METHOD_VERSION = "r1_bundle_synthesis_v1"
+BUNDLE_METHOD_VERSION = "r2_bundle_synthesis_p0_scoring"
 BUNDLE_SCORE_FORMULA = (
-    "0.30 demand_proxy + 0.20 member_scale + 0.20 low_supply_density "
-    "+ 0.20 momentum + 0.10 source_confidence"
+    "0.30 demand_proxy + 0.15 member_scale + 0.25 low_supply_density "
+    "+ 0.20 momentum + 0.10 source_confidence; low_supply_density uses the "
+    "same per-capita saturation curve as opportunity whitespace scoring"
 )
 BUNDLE_METHOD_REF = {
     "source_name": "bundle_synthesis_taxonomy",
@@ -481,7 +488,7 @@ def run_bundle_synthesis(
     metrics = RunMetrics()
     try:
         classification_metrics = classify_operator_venue_classes(repo)
-        operators = repo.operators_for_bundling()
+        operators = dedupe_operators(repo.operators_for_bundling())
         operator_ids = [str(operator["id"]) for operator in operators]
         geographies = repo.geographies_for_scoring()
         signals = repo.signals_for_operator_ids(operator_ids)
@@ -574,14 +581,12 @@ def synthesize_bundles(
         )
 
     max_member_count = max((candidate["member_count"] for candidate in raw_candidates), default=1)
-    max_density = max((candidate["raw_density"] for candidate in raw_candidates), default=0.0)
     max_momentum = max((candidate["momentum_index"] for candidate in raw_candidates), default=0.0)
 
     bundles = [
         _bundle_payload(
             candidate,
             max_member_count=max_member_count,
-            max_density=max_density,
             max_momentum=max_momentum,
         )
         for candidate in raw_candidates
@@ -639,12 +644,10 @@ def _match_operator(
     evidence_text = _operator_evidence_text(operator, raw_payloads, tag_pairs)
     category_matches = sorted(categories.intersection(definition.category_terms))
     tag_matches = sorted(tag_pairs.intersection(definition.tag_terms))
-    keyword_matches = sorted(
-        keyword for keyword in definition.keyword_terms if keyword in evidence_text
-    )
+    keyword_matches = sorted(matched_keywords(evidence_text, definition.keyword_terms))
     if not (category_matches or tag_matches or keyword_matches):
         return None
-    return {
+    match_reasons = {
         "taxonomy_version": BUNDLE_METHOD_VERSION,
         "bundle_slug": definition.slug,
         "category_matches": category_matches,
@@ -652,22 +655,20 @@ def _match_operator(
         "keyword_matches": keyword_matches,
         "description": definition.description,
     }
+    if not bundle_match_is_allowed(definition.slug, operator, match_reasons, evidence_text):
+        return None
+    return match_reasons
 
 
 def _bundle_payload(
     candidate: dict[str, Any],
     *,
     max_member_count: int,
-    max_density: float,
     max_momentum: float,
 ) -> dict[str, Any]:
     definition = candidate["definition"]
     member_scale = _log_normalize(float(candidate["member_count"]), float(max_member_count))
-    low_supply_density = (
-        _clamp(1 - float(candidate["raw_density"]) / max(max_density, 0.0001))
-        if max_density > 0
-        else 0.5
-    )
+    low_supply_density = supply_sparsity_score(float(candidate["raw_density"]))
     momentum = (
         _clamp(float(candidate["momentum_index"]) / max(max_momentum, 0.0001))
         if max_momentum > 0
@@ -697,8 +698,8 @@ def _bundle_payload(
     }
     bundle_score = round(
         0.30 * demand_proxy
-        + 0.20 * member_scale_component
-        + 0.20 * low_supply_density_component
+        + 0.15 * member_scale_component
+        + 0.25 * low_supply_density_component
         + 0.20 * momentum_component
         + 0.10 * source_confidence,
         4,

@@ -1741,3 +1741,67 @@ Results:
 - Web lint/typecheck: passed.
 - Web unit tests: 9 passed.
 - Web build: passed; Vite still reports the existing large chunk warning.
+
+## P0 fixes
+
+### Scope
+
+Fixed the three P0 scoring and data-correctness bugs from
+`docs/persona-gap-review/GAP_REPORT.md`: neighborhood demand denominators,
+operator duplication plus saturation scoring, and category-classification hygiene.
+
+### Before and After
+
+P0-A neighborhood population and municipality attribution:
+
+- Before: neighborhood rows allocated parent CSD population by observed
+  neighborhood-tagged operator share. This allowed impossible values such as
+  Downtown at 248k people and allowed Vancouver neighborhoods to be scored under
+  the wrong CSD, such as Marpole under Richmond.
+- After: reviewed City of Vancouver 2016 Census local-area populations are used
+  for known Vancouver local areas, including Downtown at 62,030 and Marpole at
+  24,460. Known Vancouver local areas force the parent municipality to
+  Vancouver. Unknown neighborhoods use a capped equal-share parent-CSD estimate,
+  never 100 percent of a CSD for one neighborhood, and traces expose
+  `population_estimation_status`, allocation share, and method.
+
+P0-B operator duplication and saturation:
+
+- Before: bundle and whitespace supply counts used raw operator rows, so repeated
+  source rows such as Oxygen Yoga & Fitness, Club Pilates, and Lagree West
+  inflated supply. `low_supply_density` was relative to the category run, so
+  mature categories could read as under-supplied.
+- After: bundle and opportunity analytics dedupe operators by normalized name
+  plus same normalized address or 150m geo proximity before supply counts.
+  `/operators` and `/leads` suppress the same duplicate pattern at query time.
+  Bundle and whitespace scoring now share an absolute per-capita saturation
+  curve: categories with at least 1 operator per 10k population score down on
+  `low_supply_density`.
+
+P0-C category hygiene:
+
+- Before: substring and broad category matches let unrelated records into
+  bundles, including bouldering crags in Longevity / IV, rehab nonprofits in
+  Cold plunge, nail salons and contractors in Spa & thermal, and martial arts in
+  Boutique strength.
+- After: keyword matching is token-safe, so `iv` and `spa` no longer match inside
+  unrelated words. Bundle/category hygiene now applies narrow deny and exclusion
+  rules for the cited bad records while preserving legitimate sauna, IV,
+  strength, and spa operators.
+
+### Operator Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
+PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_global_signal
+```
+
+Migration `018_p0_scoring_correctness.sql` registers the City Vancouver local-area
+population source and clears stale derived neighborhood heatmap/proposition rows
+so they are regenerated with corrected denominators. No main-branch push or
+auto-merge is part of this milestone.

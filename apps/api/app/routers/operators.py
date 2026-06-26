@@ -18,6 +18,36 @@ MAX_OPERATOR_LIMIT = 5000
 MAX_LEADS_LIMIT = 500
 VenueClassFilter = Literal["commercial_wellness", "public_recreation", "unknown", "all"]
 VENUE_CLASS_QUERY = Query(default="all")
+DEDUPED_OPERATOR_CLAUSE = """
+NOT EXISTS (
+  SELECT 1
+  FROM "operator" dupe
+  WHERE dupe.id <> op.id
+    AND dupe.geom IS NOT NULL
+    AND jsonb_array_length(dupe.source_refs) > 0
+    AND dupe.normalized_name = op.normalized_name
+    AND (
+      (
+        NULLIF(regexp_replace(lower(COALESCE(dupe.address, '')), '[^a-z0-9]+', ' ', 'g'), '')
+        =
+        NULLIF(regexp_replace(lower(COALESCE(op.address, '')), '[^a-z0-9]+', ' ', 'g'), '')
+      )
+      OR ST_DWithin(dupe.geom, op.geom, 150)
+    )
+    AND (
+      dupe.confidence_score > op.confidence_score
+      OR (
+        dupe.confidence_score = op.confidence_score
+        AND dupe.last_seen_at > op.last_seen_at
+      )
+      OR (
+        dupe.confidence_score = op.confidence_score
+        AND dupe.last_seen_at = op.last_seen_at
+        AND dupe.id < op.id
+      )
+    )
+)
+"""
 
 
 def _operator_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -75,6 +105,7 @@ def list_operators(
           ST_MakeEnvelope(%s, %s, %s, %s, 4326)::geography
         )
         """,
+        DEDUPED_OPERATOR_CLAUSE,
     ]
     params: list[Any] = [*parsed_bbox]
     if category:
@@ -291,6 +322,7 @@ def list_leads(
     clauses = [
         "op.geom IS NOT NULL",
         "jsonb_array_length(op.source_refs) > 0",
+        DEDUPED_OPERATOR_CLAUSE,
     ]
     params: list[Any] = []
     if category:

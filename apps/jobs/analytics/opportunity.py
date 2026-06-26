@@ -8,6 +8,15 @@ from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
+from apps.jobs.analytics.category_hygiene import category_operator_is_allowed
+from apps.jobs.analytics.scoring import (
+    CITY_VANCOUVER_LOCAL_AREA_PROFILE_REF,
+    canonical_municipality_for_neighborhood,
+    dedupe_operators,
+    estimated_neighborhood_share,
+    known_neighborhood_population,
+    supply_sparsity_score,
+)
 from apps.jobs.runner import DatabaseRepository, RunMetrics
 from packages.geo.bc_gate import CanonicalGeoRecord, bc_gate
 from packages.shared.ids import stable_id
@@ -18,14 +27,16 @@ OPPORTUNITY_METHOD = (
     "+ 0.05 source_confidence. White-space means a supply-demand signal, not "
     "guaranteed economic attractiveness. CM5 normalizes population demand with "
     "log1p(raw population) against the live CMA population denominator and normalizes "
-    "business intensity against observed same-category business density, so raw demand "
-    "components do not saturate at 1.0 solely because a CSD is large."
+    "business intensity against observed same-category business density. P0 scoring "
+    "uses deduped operators and a per-capita saturation curve for low_supply_density "
+    "so mature dense categories score down instead of reading as under-supplied."
 )
 NEIGHBORHOOD_METHOD = (
     "CM3 neighborhood extension: supply is counted from BC-gated operators carrying "
-    "neighborhood tags. Population and business denominators are allocated from the "
-    "parent CSD when no official neighborhood denominator exists; raw parent values "
-    "and allocation share are exposed in trace_payload."
+    "neighborhood tags. Vancouver local-area population uses reviewed City Census "
+    "profile values where present; otherwise population and business denominators "
+    "use a capped equal-share estimate from the parent CSD. Raw parent values, "
+    "allocation share, and estimate status are exposed in trace_payload."
 )
 DERIVED_NEIGHBORHOOD_SOURCE = "derived_neighborhood_analytics"
 COMPETITOR_RADIUS_KM = 4.0
@@ -146,6 +157,9 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                 SELECT
                   id,
                   name,
+                  categories,
+                  address,
+                  venue_class,
                   source_refs,
                   confidence_score,
                   municipality,
@@ -174,6 +188,9 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
                 SELECT
                   id,
                   name,
+                  categories,
+                  address,
+                  venue_class,
                   source_refs,
                   confidence_score,
                   municipality,
@@ -585,13 +602,16 @@ def run_opportunity_analytics(
         geographies = repo.geographies()
         max_population = repo.population_ceiling()
         neighborhood_denominator = _neighborhood_denominator_context(
-            repo.operators_with_neighborhoods()
+            dedupe_operators(repo.operators_with_neighborhoods())
         )
 
         for category in categories:
-            category_operators = repo.operators_for_category(category)
+            category_operators = [
+                operator
+                for operator in dedupe_operators(repo.operators_for_category(category))
+                if category_operator_is_allowed(category, operator)
+            ]
             raw_rows: list[dict[str, Any]] = []
-            max_density = 0.0
             max_business_density = 0.0
             max_activity = 0
             max_growth = 0
@@ -607,7 +627,6 @@ def run_opportunity_analytics(
                 supply_count = len(operators)
                 density = supply_count / max(population / 10000, 1)
                 business_density = float(denominator["value"]) / max(population / 10000, 1)
-                max_density = max(max_density, density)
                 max_business_density = max(max_business_density, business_density)
                 max_activity = max(max_activity, signal_count)
                 new_operators = sum(1 for operator in operators if operator["is_new_180d"])
@@ -648,7 +667,6 @@ def run_opportunity_analytics(
                 neighborhood_context=neighborhood_denominator,
             )
             for row in neighborhood_rows:
-                max_density = max(max_density, float(row["density"]))
                 max_business_density = max(
                     max_business_density, float(row["business_density"])
                 )
@@ -661,7 +679,6 @@ def run_opportunity_analytics(
                     category=category,
                     row=row,
                     max_population=max_population,
-                    max_density=max_density,
                     max_business_density=max_business_density,
                     max_activity=max_activity,
                     max_growth=max_growth,
@@ -689,7 +706,6 @@ def _payload_for_cell(
     category: str,
     row: dict[str, Any],
     max_population: float,
-    max_density: float,
     max_business_density: float,
     max_activity: int,
     max_growth: int,
@@ -701,7 +717,7 @@ def _payload_for_cell(
     business_count = float(denominator["value"])
     supply_count = len(operators)
     demand_proxy = _log_normalize(population, max_population)
-    low_supply_density = _clamp(1 - (row["density"] / max(max_density, 0.0001)))
+    low_supply_density = supply_sparsity_score(float(row["density"]))
     category_growth = _clamp(row["new_operators"] / max(max_growth, 1))
     business_density = float(row.get("business_density") or 0.0)
     business_intensity = _clamp(business_density / max(max_business_density, 0.0001))
@@ -770,6 +786,7 @@ def _payload_for_cell(
             "raw_parent_business_count": demand.get("raw_parent_business_count"),
             "population_allocation_share": demand.get("population_allocation_share"),
             "business_allocation_share": demand.get("business_allocation_share"),
+            "population_estimation_status": demand.get("population_estimation_status"),
             "population_estimation_method": demand.get("population_estimation_method"),
             "business_estimation_method": demand.get("business_estimation_method"),
         },
@@ -812,8 +829,9 @@ def _neighborhood_rows_for_category(
     csd_by_name = {_key(geo["geo_name"]): geo for geo in csd_geographies}
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for operator in category_operators:
-        municipality = _clean_text(operator.get("municipality"))
+        raw_municipality = _clean_text(operator.get("municipality"))
         neighborhood = _clean_text(operator.get("neighborhood"))
+        municipality = canonical_municipality_for_neighborhood(raw_municipality, neighborhood)
         if not municipality or not neighborhood:
             continue
         if (
@@ -831,7 +849,7 @@ def _neighborhood_rows_for_category(
         denominator = repo.business_denominator(str(parent_geo["geo_code"]), category)
         if denominator is None:
             continue
-        municipality = _clean_text(operators[0].get("municipality")) or str(parent_geo["geo_name"])
+        municipality = str(parent_geo["geo_name"])
         neighborhood = _clean_text(operators[0].get("neighborhood")) or neighborhood_key
         total_tagged = int(
             neighborhood_context["counts_by_municipality"].get(municipality_key, len(operators))
@@ -841,10 +859,51 @@ def _neighborhood_rows_for_category(
                 (municipality_key, neighborhood_key), len(operators)
             )
         )
-        allocation_share = _clamp(neighborhood_tagged / max(total_tagged, 1))
+        known_population = known_neighborhood_population(neighborhood)
+        if known_population is not None:
+            population = known_population.population
+            allocation_share = _clamp(population / max(float(parent_geo["population"]), 1.0))
+            population_confidence = known_population.confidence_score
+            population_source_refs = _unique_refs(
+                [
+                    *list(parent_geo["population_source_refs"]),
+                    CITY_VANCOUVER_LOCAL_AREA_PROFILE_REF,
+                ]
+            )
+            population_payload = {
+                "demand_source": "city_vancouver_census_local_area_profiles_2016",
+                "demand_source_status": "official_neighborhood",
+                "denominator_scope": "neighborhood_official_local_area",
+                "reference_period": known_population.reference_period,
+                "raw_parent_population": float(parent_geo["population"]),
+                "population_allocation_share": round(allocation_share, 6),
+                "population_estimation_status": "official_neighborhood",
+                "population_estimation_method": (
+                    "City of Vancouver 2016 Census local-area profile population"
+                ),
+            }
+        else:
+            allocation_share = estimated_neighborhood_share(
+                municipality_key=municipality_key,
+                neighborhood_key=neighborhood_key,
+                neighborhood_context=neighborhood_context,
+            )
+            population = float(parent_geo["population"]) * allocation_share
+            population_confidence = _clamp(float(parent_geo["population_confidence"]) * 0.78)
+            population_source_refs = parent_geo["population_source_refs"]
+            population_payload = {
+                **dict(parent_geo.get("population_payload") or {}),
+                "denominator_scope": "neighborhood_estimate_from_parent_csd",
+                "raw_parent_population": float(parent_geo["population"]),
+                "population_allocation_share": round(allocation_share, 6),
+                "population_estimation_status": "estimated",
+                "population_estimation_method": (
+                    "parent CSD population allocated as capped equal share across "
+                    "observed source-backed neighborhoods in the same municipality"
+                ),
+            }
         if allocation_share <= 0:
             continue
-        population = float(parent_geo["population"]) * allocation_share
         business_count = float(denominator["value"]) * allocation_share
         lat = _average(
             [_optional_float(operator.get("lat")) for operator in operators],
@@ -859,7 +918,7 @@ def _neighborhood_rows_for_category(
         source_refs = _unique_refs(
             [
                 *list(parent_geo["geography_source_refs"]),
-                *list(parent_geo["population_source_refs"]),
+                *list(population_source_refs),
                 *list(denominator["source_refs"]),
                 *operator_refs,
             ]
@@ -887,6 +946,7 @@ def _neighborhood_rows_for_category(
             "operator_neighborhood_tag_count": neighborhood_tagged,
             "municipality_neighborhood_tag_count": total_tagged,
             "population_allocation_share": round(allocation_share, 6),
+            "population_estimation_status": population_payload["population_estimation_status"],
             "method": NEIGHBORHOOD_METHOD,
         }
         if not repo.upsert_neighborhood_geography(
@@ -917,9 +977,13 @@ def _neighborhood_rows_for_category(
             "confidence_score": _clamp(float(denominator["confidence_score"]) * 0.88),
             "payload": {
                 **dict(denominator.get("payload") or {}),
-                "denominator_scope": "neighborhood_estimate_from_parent_csd",
+                "denominator_scope": population_payload["denominator_scope"],
                 "raw_parent_business_count": float(denominator["value"]),
                 "business_allocation_share": round(allocation_share, 6),
+                "business_estimation_method": (
+                    "parent CSD category business count allocated by the same "
+                    "population share used for the neighborhood denominator"
+                ),
             },
         }
         geo = {
@@ -935,14 +999,9 @@ def _neighborhood_rows_for_category(
                 "den_neighborhood_population", parent_geo["population_denominator_id"], geo_code
             ),
             "population": population,
-            "population_source_refs": parent_geo["population_source_refs"],
-            "population_confidence": _clamp(float(parent_geo["population_confidence"]) * 0.88),
-            "population_payload": {
-                **dict(parent_geo.get("population_payload") or {}),
-                "denominator_scope": "neighborhood_estimate_from_parent_csd",
-                "raw_parent_population": float(parent_geo["population"]),
-                "population_allocation_share": round(allocation_share, 6),
-            },
+            "population_source_refs": population_source_refs,
+            "population_confidence": population_confidence,
+            "population_payload": population_payload,
             "municipality": municipality,
             "parent_geo_code": parent_geo["geo_code"],
         }
@@ -964,7 +1023,7 @@ def _neighborhood_rows_for_category(
                     geography_payload=geo["geography_payload"],
                     population_payload=geo["population_payload"],
                     business_payload=derived_denominator["payload"],
-                    denominator_scope="neighborhood_estimate_from_parent_csd",
+                    denominator_scope=str(population_payload["denominator_scope"]),
                     raw_parent_population=float(parent_geo["population"]),
                     raw_parent_business_count=float(denominator["value"]),
                     population_allocation_share=allocation_share,
@@ -980,18 +1039,26 @@ def _neighborhood_denominator_context(
 ) -> dict[str, Any]:
     counts_by_municipality: dict[str, int] = defaultdict(int)
     counts_by_key: dict[tuple[str, str], int] = defaultdict(int)
+    neighborhoods_by_municipality: dict[str, set[str]] = defaultdict(set)
     for operator in operators:
-        municipality = _clean_text(operator.get("municipality"))
         neighborhood = _clean_text(operator.get("neighborhood"))
+        municipality = canonical_municipality_for_neighborhood(
+            _clean_text(operator.get("municipality")), neighborhood
+        )
         if not municipality or not neighborhood:
             continue
         municipality_key = _key(municipality)
         neighborhood_key = _key(neighborhood)
         counts_by_municipality[municipality_key] += 1
         counts_by_key[(municipality_key, neighborhood_key)] += 1
+        neighborhoods_by_municipality[municipality_key].add(neighborhood_key)
     return {
         "counts_by_municipality": dict(counts_by_municipality),
         "counts_by_key": dict(counts_by_key),
+        "unique_neighborhood_counts_by_municipality": {
+            municipality: len(neighborhoods)
+            for municipality, neighborhoods in neighborhoods_by_municipality.items()
+        },
     }
 
 
@@ -1096,6 +1163,40 @@ def _demand_metadata(
         multiplier *= 0.92
     if denominator_scope != "CSD":
         multiplier *= 0.88
+    population_estimation_status = next(
+        (
+            str(payload.get("population_estimation_status"))
+            for payload in payloads
+            if payload.get("population_estimation_status")
+        ),
+        "official" if denominator_scope == "CSD" else "estimated",
+    )
+    population_estimation_method = next(
+        (
+            str(payload.get("population_estimation_method"))
+            for payload in payloads
+            if payload.get("population_estimation_method")
+        ),
+        (
+            "parent CSD population allocated as capped equal share across observed "
+            "source-backed neighborhoods in the same municipality"
+            if denominator_scope != "CSD"
+            else "official CSD denominator"
+        ),
+    )
+    business_estimation_method = next(
+        (
+            str(payload.get("business_estimation_method"))
+            for payload in payloads
+            if payload.get("business_estimation_method")
+        ),
+        (
+            "parent CSD category business count allocated by the neighborhood "
+            "population share"
+            if denominator_scope != "CSD"
+            else "official CSD denominator"
+        ),
+    )
     return {
         "demand_source": demand_source,
         "demand_source_status": demand_source_status,
@@ -1118,17 +1219,9 @@ def _demand_metadata(
             if business_allocation_share is not None
             else None
         ),
-        "population_estimation_method": (
-            "parent CSD population allocated by observed neighborhood-tagged operator share"
-            if denominator_scope != "CSD"
-            else "official CSD denominator"
-        ),
-        "business_estimation_method": (
-            "parent CSD category business count allocated by observed "
-            "neighborhood-tagged operator share"
-            if denominator_scope != "CSD"
-            else "official CSD denominator"
-        ),
+        "population_estimation_status": population_estimation_status,
+        "population_estimation_method": population_estimation_method,
+        "business_estimation_method": business_estimation_method,
     }
 
 

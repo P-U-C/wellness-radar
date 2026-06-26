@@ -183,6 +183,11 @@ def analytics_methodology() -> dict[str, Any]:
                 "+ 0.15 target_demo_fit + 0.10 transit_access + "
                 "0.05 event_community_activity + 0.05 source_confidence"
             ),
+            "supply_component": (
+                "low_supply_density is computed from deduped same-category operators per "
+                "10,000 population using a saturation curve. Dense mature categories score "
+                "down instead of being rewarded for relative rank inside their own category."
+            ),
             "caveat": (
                 "White-space is a source-backed supply-demand signal, not guaranteed "
                 "economic attractiveness."
@@ -192,6 +197,17 @@ def analytics_methodology() -> dict[str, Any]:
                 "source_refs",
                 "source_confidence",
             ],
+        },
+        "bundles": {
+            "formula": (
+                "0.30 demand_proxy + 0.15 member_scale + 0.25 low_supply_density + "
+                "0.20 momentum + 0.10 source_confidence"
+            ),
+            "relationship_to_whitespace": (
+                "Bundles and whitespace use the same deduped per-capita supply saturation "
+                "component. Bundles summarize category-level attractiveness; whitespace "
+                "scores a category in a specific geography."
+            ),
         },
         "influence": {
             "formula": (
