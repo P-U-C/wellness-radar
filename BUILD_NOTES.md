@@ -1836,3 +1836,46 @@ PYTHONPATH=. python3 -m apps.jobs.runner bundle_global_signal
 If denominators and neighborhoods are already current, rerun from
 `venue_classification` onward so bundle-keyed opportunity categories use current
 venue classes before score generation.
+
+## P1B
+
+### Scope
+
+Made the "who do I call" layer category-relevant and source-backed. `/leads/{id}`
+now returns lead detail, `/leads` accepts `category` and `bundle` filters and
+returns a non-null `category` for leads where the operator has categories.
+`/people` accepts `category`, derives `primary_category` from public
+operator/practitioner affiliations, and the default influence ordering demotes
+pure government/policy figures behind real category operators. `/people-graph`
+supports category filtering and graph rows now carry category metadata for
+operator-linked people and organizations.
+
+### Contact Coverage
+
+Local DB baseline before migration: 251 of 2,112 source-backed operators had an
+`operator_contact` row (11.88%). After applying
+`019_p1b_actionable_contacts_people.sql`: 253 of 2,112 (11.98%), with 5
+idempotent contact rows backfilled from already-ingested OSM/operator website
+source refs. Current contact-type counts: 163 operators with phone, 28 with
+email, 238 with website.
+
+### Live Checks
+
+- `/leads?category=recovery_contrast_therapy&limit=5` returned category-matched
+  recovery leads with contacts first.
+- `/leads/{id}` returned 200 for a live recovery lead.
+- `/people?category=recovery_contrast_therapy&limit=5` returned Peter Chen,
+  AetherHaus Team, Sophie Labrosse, and Tality Wellness Team ahead of policy
+  figures.
+- After rerunning `people_graph`, 191 of 195 person nodes and 582 of 582
+  operator nodes had `primary_category`; `/people-graph?category=recovery_contrast_therapy`
+  returned category-tagged person nodes and graph edges.
+
+### Operator Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner people_graph
+```

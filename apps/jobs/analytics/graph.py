@@ -202,12 +202,24 @@ def build_graph_rows(
     edges: dict[str, GraphEdge] = {}
     org_by_name = {normalize_name(str(org["name"])): org for org in organizations}
     op_by_name = {normalize_name(str(operator["name"])): operator for operator in operators}
+    op_by_id = {str(operator["id"]): operator for operator in operators}
 
     for person in people:
-        node = _person_node(person)
+        node = _person_node(
+            person,
+            _person_categories(
+                person,
+                operators=operators,
+                op_by_id=op_by_id,
+                op_by_name=op_by_name,
+            ),
+        )
         nodes[node.id] = node
     for org in organizations:
-        node = _organization_node(org)
+        node = _organization_node(
+            org,
+            _organization_categories(org, operators=operators, op_by_name=op_by_name),
+        )
         nodes[node.id] = node
     for operator in operators:
         node = _operator_node(operator)
@@ -338,29 +350,35 @@ def radial_positions(
     return positions
 
 
-def _person_node(person: dict[str, Any]) -> GraphNode:
+def _person_node(person: dict[str, Any], categories: list[str] | None = None) -> GraphNode:
+    categories = categories or []
     return GraphNode(
         id=f"node_person_{person['id']}",
         node_type="person",
         entity_id=str(person["id"]),
         label=str(person["name"]),
-        primary_category=None,
+        primary_category=categories[0] if categories else None,
         source_refs=person["source_refs"],
         confidence_score=float(person["confidence_score"]),
-        payload={"roles": person["roles"], "affiliations": person["affiliations"]},
+        payload={
+            "roles": person["roles"],
+            "affiliations": person["affiliations"],
+            "categories": categories,
+        },
     )
 
 
-def _organization_node(org: dict[str, Any]) -> GraphNode:
+def _organization_node(org: dict[str, Any], categories: list[str] | None = None) -> GraphNode:
+    categories = categories or []
     return GraphNode(
         id=f"node_organization_{org['id']}",
         node_type="organization",
         entity_id=str(org["id"]),
         label=str(org["name"]),
-        primary_category=None,
+        primary_category=categories[0] if categories else None,
         source_refs=org["source_refs"],
         confidence_score=float(org["confidence_score"]),
-        payload={},
+        payload={"categories": categories},
     )
 
 
@@ -423,6 +441,90 @@ def _affiliation_edge_type(role: str) -> str:
     if "founder" in lowered:
         return "founder"
     return "employee"
+
+
+def _person_categories(
+    person: dict[str, Any],
+    *,
+    operators: list[dict[str, Any]],
+    op_by_id: dict[str, dict[str, Any]],
+    op_by_name: dict[str, dict[str, Any]],
+) -> list[str]:
+    matches: list[dict[str, Any]] = []
+    for affiliation in person.get("affiliations") or []:
+        if not isinstance(affiliation, dict):
+            continue
+        operator_id = str(affiliation.get("operator_id") or "")
+        if operator_id and operator_id in op_by_id:
+            matches.append(op_by_id[operator_id])
+            continue
+        for key in ("operator_name", "organization_name"):
+            match = _operator_match_for_name(
+                affiliation.get(key),
+                operators=operators,
+                op_by_name=op_by_name,
+            )
+            if match is not None:
+                matches.append(match)
+                break
+    return _categories_from_operator_matches(matches)
+
+
+def _organization_categories(
+    org: dict[str, Any],
+    *,
+    operators: list[dict[str, Any]],
+    op_by_name: dict[str, dict[str, Any]],
+) -> list[str]:
+    matches = [
+        operator
+        for operator in operators
+        if operator.get("organization_id") and operator.get("organization_id") == org.get("id")
+    ]
+    name_match = _operator_match_for_name(
+        org.get("name"),
+        operators=operators,
+        op_by_name=op_by_name,
+    )
+    if name_match is not None:
+        matches.append(name_match)
+    return _categories_from_operator_matches(matches)
+
+
+def _operator_match_for_name(
+    value: Any,
+    *,
+    operators: list[dict[str, Any]],
+    op_by_name: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    normalized = normalize_name(str(value or ""))
+    if not normalized:
+        return None
+    exact = op_by_name.get(normalized)
+    if exact is not None:
+        return exact
+    if len(normalized) < 6:
+        return None
+    for operator in operators:
+        operator_name = str(operator.get("normalized_name") or "")
+        if not operator_name:
+            operator_name = normalize_name(str(operator.get("name") or ""))
+        if operator_name.startswith(normalized) or normalized.startswith(operator_name):
+            return operator
+    return None
+
+
+def _categories_from_operator_matches(matches: Iterable[dict[str, Any]]) -> list[str]:
+    categories: list[str] = []
+    seen: set[str] = set()
+    for operator in matches:
+        for category in operator.get("categories") or []:
+            category_text = str(category)
+            if category_text in seen:
+                continue
+            seen.add(category_text)
+            categories.append(category_text)
+    return categories
 
 
 def _unique_refs(refs: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

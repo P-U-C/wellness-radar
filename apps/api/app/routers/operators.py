@@ -313,8 +313,9 @@ def get_operator(operator_id: str) -> dict[str, Any]:
 def list_leads(
     request: Request,
     category: str | None = Query(default=None),
+    bundle: str | None = Query(default=None),
     municipality: str | None = Query(default=None),
-    has_contact: bool | None = Query(default=True),
+    has_contact: bool | None = Query(default=None),
     limit: int = Query(default=100, ge=1),
     format: Literal["json", "csv"] = Query(default="json"),
 ) -> Any:
@@ -328,6 +329,21 @@ def list_leads(
     if category:
         clauses.append("%s = ANY(op.categories)")
         params.append(category)
+    if bundle:
+        clauses.append(
+            """
+            EXISTS (
+              SELECT 1
+              FROM bundle_operator_membership bom
+              JOIN bundle b ON b.id = bom.bundle_id
+              WHERE bom.operator_id = op.id
+                AND (b.id = %s OR b.slug = %s)
+                AND jsonb_array_length(bom.source_refs) > 0
+                AND jsonb_array_length(b.source_refs) > 0
+            )
+            """
+        )
+        params.extend([bundle, bundle])
     if municipality:
         clauses.append("op.municipality ILIKE %s")
         params.append(municipality)
@@ -341,75 +357,10 @@ def list_leads(
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
-            conn.execute(
-                f"""
-                SELECT
-                  op.id,
-                  op.name,
-                  op.categories,
-                  op.venue_class,
-                  op.status::text AS status,
-                  op.address,
-                  op.municipality,
-                  COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name)
-                    AS neighborhood,
-                  op.phone,
-                  op.website,
-                  op.social_links,
-                  op.organization_id,
-                  op.orgbook_id,
-                  op.neighborhood_assignment_method,
-                  op.neighborhood_assignment_source,
-                  op.neighborhood_assignment_confidence,
-                  ST_Y(op.geom::geometry) AS lat,
-                  ST_X(op.geom::geometry) AS lng,
-                  op.confidence_score,
-                  op.source_refs,
-                  op.last_seen_at,
-                  contacts.contacts,
-                  contacts.contact_count,
-                  COALESCE(signal_counts.signal_count, 0) AS signal_count,
-                  opportunity.geo_name AS opportunity_geo_name,
-                  opportunity.opportunity_score AS opportunity_score,
-                  opportunity.source_refs AS opportunity_source_refs
-                FROM "operator" op
-                LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()})
-                  derived_neighborhood ON TRUE
-                LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
-                LEFT JOIN LATERAL (
-                  SELECT count(*)::int AS signal_count
-                  FROM signal s
-                  WHERE s.related_operator_id = op.id
-                    AND jsonb_array_length(s.source_refs) > 0
-                ) signal_counts ON TRUE
-                LEFT JOIN LATERAL (
-                  SELECT os.geo_name, os.opportunity_score, os.source_refs
-                  FROM opportunity_scorecard os
-                  WHERE os.category = op.categories[1]
-                    AND jsonb_array_length(os.source_refs) > 0
-                    AND (
-                      lower(os.geo_name) = lower(COALESCE(op.municipality, ''))
-                      OR lower(os.geo_name) = lower(
-                        COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name, '')
-                      )
-                      OR lower(os.geo_name) LIKE (
-                        '%%' || lower(COALESCE(op.municipality, '')) || '%%'
-                      )
-                    )
-                  ORDER BY os.opportunity_score DESC
-                  LIMIT 1
-                ) opportunity ON TRUE
-                WHERE {where_sql}
-                ORDER BY
-                  contacts.contact_count DESC,
-                  opportunity.opportunity_score DESC NULLS LAST,
-                  op.name ASC
-                LIMIT %s
-                """,
-                [*params, active_limit],
-            ).fetchall(),
+            conn.execute(_lead_select_sql(where_sql), [*params, active_limit]).fetchall(),
         )
-    items = [_lead_row(row) for row in rows]
+    resolved_category = category or _category_for_bundle(bundle)
+    items = [_lead_row(row, requested_category=resolved_category) for row in rows]
     wants_csv = format == "csv" or "text/csv" in request.headers.get("accept", "")
     if wants_csv:
         return Response(
@@ -421,6 +372,8 @@ def list_leads(
         "items": items,
         "meta": {
             "count": len(rows),
+            "category": category,
+            "bundle": bundle,
             "has_contact": has_contact,
             "limit": active_limit,
             "requested_limit": limit,
@@ -429,8 +382,28 @@ def list_leads(
     }
 
 
-def _lead_row(row: dict[str, Any]) -> dict[str, Any]:
+@router.get("/leads/{lead_id}")
+def get_lead(lead_id: str) -> dict[str, Any]:
+    clauses = [
+        "op.id = %s",
+        "op.geom IS NOT NULL",
+        "jsonb_array_length(op.source_refs) > 0",
+        DEDUPED_OPERATOR_CLAUSE,
+    ]
+    with get_connection() as conn:
+        row = cast(
+            dict[str, Any] | None,
+            conn.execute(_lead_select_sql(" AND ".join(clauses), include_order=False), [lead_id, 1])
+            .fetchone(),
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="lead not found")
+    return _lead_row(row)
+
+
+def _lead_row(row: dict[str, Any], requested_category: str | None = None) -> dict[str, Any]:
     item = _operator_row(row)
+    item["category"] = _lead_category(item["categories"], requested_category=requested_category)
     item["contact_count"] = int(row.get("contact_count") or 0)
     item["opportunity_context"] = {
         "signal_count": int(row.get("signal_count") or 0),
@@ -441,6 +414,111 @@ def _lead_row(row: dict[str, Any]) -> dict[str, Any]:
         "source_refs": row.get("opportunity_source_refs") or [],
     }
     return item
+
+
+def _lead_select_sql(where_sql: str, *, include_order: bool = True) -> str:
+    order_sql = (
+        """
+        ORDER BY
+          contacts.contact_count DESC,
+          opportunity.opportunity_score DESC NULLS LAST,
+          op.name ASC
+        """
+        if include_order
+        else ""
+    )
+    return f"""
+      SELECT
+        op.id,
+        op.name,
+        op.categories,
+        op.venue_class,
+        op.status::text AS status,
+        op.address,
+        op.municipality,
+        COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name)
+          AS neighborhood,
+        op.phone,
+        op.website,
+        op.social_links,
+        op.organization_id,
+        op.orgbook_id,
+        op.neighborhood_assignment_method,
+        op.neighborhood_assignment_source,
+        op.neighborhood_assignment_confidence,
+        ST_Y(op.geom::geometry) AS lat,
+        ST_X(op.geom::geometry) AS lng,
+        op.confidence_score,
+        op.source_refs,
+        op.last_seen_at,
+        contacts.contacts,
+        contacts.contact_count,
+        COALESCE(signal_counts.signal_count, 0) AS signal_count,
+        opportunity.geo_name AS opportunity_geo_name,
+        opportunity.opportunity_score AS opportunity_score,
+        opportunity.source_refs AS opportunity_source_refs
+      FROM "operator" op
+      LEFT JOIN LATERAL ({_derived_neighborhood_lateral_sql()})
+        derived_neighborhood ON TRUE
+      LEFT JOIN LATERAL ({_contacts_lateral_sql()}) contacts ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT count(*)::int AS signal_count
+        FROM signal s
+        WHERE s.related_operator_id = op.id
+          AND jsonb_array_length(s.source_refs) > 0
+      ) signal_counts ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT os.geo_name, os.opportunity_score, os.source_refs
+        FROM opportunity_scorecard os
+        WHERE os.category = op.categories[1]
+          AND jsonb_array_length(os.source_refs) > 0
+          AND (
+            lower(os.geo_name) = lower(COALESCE(op.municipality, ''))
+            OR lower(os.geo_name) = lower(
+              COALESCE(NULLIF(op.neighborhood, ''), derived_neighborhood.geo_name, '')
+            )
+            OR lower(os.geo_name) LIKE (
+              '%%' || lower(COALESCE(op.municipality, '')) || '%%'
+            )
+          )
+        ORDER BY os.opportunity_score DESC
+        LIMIT 1
+      ) opportunity ON TRUE
+      WHERE {where_sql}
+      {order_sql}
+      LIMIT %s
+    """
+
+
+def _lead_category(
+    categories: list[str] | tuple[str, ...], *, requested_category: str | None = None
+) -> str | None:
+    if requested_category and requested_category in categories:
+        return requested_category
+    return categories[0] if categories else None
+
+
+def _category_for_bundle(bundle: str | None) -> str | None:
+    if not bundle:
+        return None
+    normalized = bundle.removeprefix("bundle_").replace("-", "_")
+    bundle_categories = {
+        "cold_plunge_contrast_therapy": "recovery_contrast_therapy",
+        "spa_thermal": "spa_thermal",
+        "boutique_strength": "fitness_movement",
+        "pickleball_court_sports": "racquet_court_sports",
+        "climbing_bouldering": "climbing",
+        "combat_martial_arts": "combat_sports",
+        "public_recreation_courts_fields": "public_recreation",
+        "aquatics_ice_rinks": "aquatics",
+        "yoga_pilates": "fitness_movement",
+        "longevity_iv": "nutrition_longevity",
+        "allied_health_bodywork": "allied_health",
+        "social_wellness_clubs": "community_social_wellness",
+        "mind_breathwork": "mind_meditation",
+        "wellness_retail": "wellness_retail_product",
+    }
+    return bundle_categories.get(normalized)
 
 
 def _contacts_lateral_sql() -> str:
