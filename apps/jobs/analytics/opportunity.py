@@ -4,10 +4,17 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
+from apps.jobs.analytics.bundles import (
+    BUNDLE_METHOD_REF,
+    BUNDLE_TAXONOMY,
+    BundleDefinition,
+    _match_operator,
+)
 from apps.jobs.analytics.category_hygiene import category_operator_is_allowed
 from apps.jobs.analytics.scoring import (
     CITY_VANCOUVER_LOCAL_AREA_PROFILE_REF,
@@ -40,6 +47,14 @@ NEIGHBORHOOD_METHOD = (
 )
 DERIVED_NEIGHBORHOOD_SOURCE = "derived_neighborhood_analytics"
 COMPETITOR_RADIUS_KM = 4.0
+
+
+@dataclass(frozen=True)
+class OpportunityCategorySpec:
+    key: str
+    label: str
+    description: str
+    bundle_definition: BundleDefinition | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +104,40 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
         ).fetchall()
         return [str(row["category"]) for row in rows]
 
+    def operator_categories(self) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT DISTINCT category
+            FROM "operator" op
+            CROSS JOIN LATERAL unnest(op.categories) AS category(category)
+            WHERE jsonb_array_length(op.source_refs) > 0
+            ORDER BY category
+            """
+        ).fetchall()
+        return [str(row["category"]) for row in rows]
+
+    def upsert_category_taxonomy(self, spec: OpportunityCategorySpec) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO category_taxonomy (
+              category,
+              label,
+              description,
+              source_refs,
+              needs_human_review,
+              active
+            )
+            VALUES (%s, %s, %s, %s, TRUE, TRUE)
+            ON CONFLICT (category) DO NOTHING
+            """,
+            (
+                spec.key,
+                spec.label,
+                spec.description,
+                Jsonb(_refs_for_category_spec(spec)),
+            ),
+        )
+
     def geographies(self) -> list[dict[str, Any]]:
         return list(
             self.conn.execute(
@@ -128,6 +177,43 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
         if row is None or row["population_ceiling"] is None:
             return 1.0
         return max(float(row["population_ceiling"]), 1.0)
+
+    def operators_for_opportunity_matching(self) -> list[dict[str, Any]]:
+        return list(
+            self.conn.execute(
+                """
+                SELECT
+                  op.id,
+                  op.name,
+                  op.normalized_name,
+                  op.organization_id,
+                  org.name AS organization_name,
+                  op.categories,
+                  op.address,
+                  op.venue_class,
+                  op.municipality,
+                  op.neighborhood,
+                  ST_Y(op.geom::geometry) AS lat,
+                  ST_X(op.geom::geometry) AS lng,
+                  op.first_seen_at,
+                  op.first_seen_at >= now() - interval '180 days' AS is_new_180d,
+                  op.source_refs,
+                  op.confidence_score,
+                  raw.raw_payloads
+                FROM "operator" op
+                LEFT JOIN organization org ON org.id = op.organization_id
+                LEFT JOIN LATERAL (
+                  SELECT COALESCE(jsonb_agg(rp.raw_json), '[]'::jsonb) AS raw_payloads
+                  FROM jsonb_array_elements(op.source_refs) AS ref
+                  JOIN raw_payload rp
+                    ON rp.source_name = ref->>'source_name'
+                   AND rp.source_record_id = ref->>'source_record_id'
+                ) raw ON TRUE
+                WHERE jsonb_array_length(op.source_refs) > 0
+                ORDER BY op.name ASC
+                """
+            ).fetchall()
+        )
 
     def business_denominator(self, geo_code: str, category: str) -> dict[str, Any] | None:
         return cast(
@@ -403,6 +489,77 @@ class OpportunityAnalyticsRepository(DatabaseRepository):
         confidence = _average(confidences, default=0.5)
         return counts, refs, confidence
 
+    def velocity_refs_and_counts_for_operator_set(
+        self,
+        category: str,
+        days: int,
+        operators: Sequence[dict[str, Any]],
+    ) -> tuple[dict[str, int], list[dict[str, Any]], float]:
+        operator_rows = [
+            operator for operator in operators if _operator_seen_within(operator, days)
+        ]
+        operator_ids = [str(operator["id"]) for operator in operators]
+        job_rows = self.conn.execute(
+            """
+            SELECT id
+            FROM job_posting
+            WHERE posted_at >= now() - (%s::text || ' days')::interval
+              AND job_category = %s
+            """,
+            (days, category),
+        ).fetchall()
+        event_rows = self.conn.execute(
+            """
+            SELECT id, source_refs
+            FROM event
+            WHERE start_at >= now() - (%s::text || ' days')::interval
+              AND %s = ANY(topics)
+            """,
+            (days, category),
+        ).fetchall()
+        if operator_ids:
+            signal_rows = self.conn.execute(
+                """
+                SELECT s.id, s.source_refs, s.confidence_score
+                FROM signal s
+                WHERE s.occurred_at >= now() - (%s::text || ' days')::interval
+                  AND (
+                    s.related_operator_id = ANY(%s)
+                    OR %s = ANY(COALESCE(s.ai_category_suggestions, ARRAY[]::text[]))
+                  )
+                """,
+                (days, operator_ids, category),
+            ).fetchall()
+        else:
+            signal_rows = self.conn.execute(
+                """
+                SELECT s.id, s.source_refs, s.confidence_score
+                FROM signal s
+                WHERE s.occurred_at >= now() - (%s::text || ' days')::interval
+                  AND %s = ANY(COALESCE(s.ai_category_suggestions, ARRAY[]::text[]))
+                """,
+                (days, category),
+            ).fetchall()
+        refs = _flatten_refs(
+            [
+                *[row["source_refs"] for row in operator_rows],
+                *[row["source_refs"] for row in event_rows],
+                *[row["source_refs"] for row in signal_rows],
+            ]
+        )
+        confidences = [
+            *[float(row["confidence_score"]) for row in operator_rows],
+            *[float(row["confidence_score"]) for row in signal_rows],
+        ]
+        counts = {
+            "new_operator_count": len(operator_rows),
+            "job_velocity_count": len(job_rows),
+            "event_velocity_count": len(event_rows),
+            "news_velocity_count": len(signal_rows),
+        }
+        confidence = _average(confidences, default=0.5)
+        return counts, refs, confidence
+
     def upsert_heatmap_cell(self, payload: dict[str, Any]) -> None:
         self.conn.execute(
             """
@@ -598,28 +755,45 @@ def run_opportunity_analytics(
     repo = repository or OpportunityAnalyticsRepository()
     metrics = RunMetrics()
     try:
-        categories = repo.categories_with_denominators()
+        denominator_categories = repo.categories_with_denominators()
+        operator_categories = repo.operator_categories()
+        matching_operators = dedupe_operators(repo.operators_for_opportunity_matching())
+        specs = _opportunity_category_specs(
+            denominator_categories=denominator_categories,
+            operator_categories=operator_categories,
+            operators=matching_operators,
+        )
+        for spec in specs:
+            repo.upsert_category_taxonomy(spec)
         geographies = repo.geographies()
         max_population = repo.population_ceiling()
         neighborhood_denominator = _neighborhood_denominator_context(
             dedupe_operators(repo.operators_with_neighborhoods())
         )
+        operators_by_spec: dict[str, list[dict[str, Any]]] = {}
 
-        for category in categories:
-            category_operators = [
-                operator
-                for operator in dedupe_operators(repo.operators_for_category(category))
-                if category_operator_is_allowed(category, operator)
-            ]
+        for spec in specs:
+            category = spec.key
+            category_operators = _operators_for_category_spec(
+                repo=repo,
+                spec=spec,
+                matching_operators=matching_operators,
+            )
+            operators_by_spec[category] = category_operators
+            method_refs = _refs_for_category_spec(spec)
             raw_rows: list[dict[str, Any]] = []
             max_business_density = 0.0
             max_activity = 0
             max_growth = 0
             for geo in geographies:
-                denominator = repo.business_denominator(str(geo["geo_code"]), category)
-                if denominator is None:
-                    continue
                 operators = _operators_for_csd(category_operators, str(geo["geo_name"]))
+                denominator = _business_denominator_for_geo(
+                    repo=repo,
+                    geo=geo,
+                    category=category,
+                    operators=operators,
+                    method_refs=method_refs,
+                )
                 signal_count, signal_refs, signal_conf = repo.signal_count_for_geo_category(
                     str(geo["geo_name"]), category, 180
                 )
@@ -665,6 +839,7 @@ def run_opportunity_analytics(
                 category_operators=category_operators,
                 csd_geographies=geographies,
                 neighborhood_context=neighborhood_denominator,
+                method_refs=method_refs,
             )
             for row in neighborhood_rows:
                 max_business_density = max(
@@ -689,16 +864,131 @@ def run_opportunity_analytics(
                 repo.upsert_scorecard(payload)
                 metrics.records_persisted += 1
 
-        for category in categories:
+        for spec in specs:
+            category = spec.key
+            category_operators = operators_by_spec.get(category, [])
             for days in (30, 90, 180):
-                counts, refs, confidence = repo.velocity_refs_and_counts(category, days)
+                counts, refs, confidence = repo.velocity_refs_and_counts_for_operator_set(
+                    category, days, category_operators
+                )
                 if not refs:
-                    refs = _category_method_refs(category)
+                    refs = _refs_for_category_spec(spec)
                 repo.upsert_velocity(category, days, counts, refs, confidence)
                 metrics.records_persisted += 1
         return metrics
     finally:
         repo.close()
+
+
+def _opportunity_category_specs(
+    *,
+    denominator_categories: Sequence[str],
+    operator_categories: Sequence[str],
+    operators: Sequence[dict[str, Any]],
+) -> list[OpportunityCategorySpec]:
+    specs: dict[str, OpportunityCategorySpec] = {}
+    for category in sorted({*denominator_categories, *operator_categories}):
+        specs[category] = OpportunityCategorySpec(
+            key=category,
+            label=_label_for_category(category),
+            description=_description_for_category(category),
+        )
+    for definition in BUNDLE_TAXONOMY:
+        if definition.slug in specs:
+            continue
+        if not _operators_for_bundle_definition(definition, operators):
+            continue
+        specs[definition.slug] = OpportunityCategorySpec(
+            key=definition.slug,
+            label=definition.label,
+            description=definition.description,
+            bundle_definition=definition,
+        )
+    return sorted(specs.values(), key=lambda spec: spec.key)
+
+
+def _operators_for_category_spec(
+    *,
+    repo: OpportunityAnalyticsRepository,
+    spec: OpportunityCategorySpec,
+    matching_operators: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if spec.bundle_definition is not None:
+        return _operators_for_bundle_definition(spec.bundle_definition, matching_operators)
+    return [
+        operator
+        for operator in dedupe_operators(repo.operators_for_category(spec.key))
+        if category_operator_is_allowed(spec.key, operator)
+    ]
+
+
+def _operators_for_bundle_definition(
+    definition: BundleDefinition, operators: Sequence[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    matched: list[dict[str, Any]] = []
+    for operator in operators:
+        if str(operator.get("venue_class") or "unknown") != definition.venue_class:
+            continue
+        if _match_operator(definition, operator) is None:
+            continue
+        matched.append(operator)
+    return matched
+
+
+def _business_denominator_for_geo(
+    *,
+    repo: OpportunityAnalyticsRepository,
+    geo: dict[str, Any],
+    category: str,
+    operators: Sequence[dict[str, Any]],
+    method_refs: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    denominator = repo.business_denominator(str(geo["geo_code"]), category)
+    if denominator is not None:
+        return denominator
+    return _observed_operator_business_denominator(
+        category=category,
+        geo=geo,
+        operators=operators,
+        method_refs=method_refs,
+    )
+
+
+def _observed_operator_business_denominator(
+    *,
+    category: str,
+    geo: dict[str, Any],
+    operators: Sequence[dict[str, Any]],
+    method_refs: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    operator_refs = _flatten_refs(operator.get("source_refs") for operator in operators)
+    operator_ids = [str(operator["id"]) for operator in operators]
+    operator_confidences = [
+        _optional_float(operator.get("confidence_score")) for operator in operators
+    ]
+    confidence = _clamp(
+        _average(operator_confidences, default=0.55) * (0.82 if operators else 0.7)
+    )
+    return {
+        "id": stable_id("den_observed_operator_count", category, geo["geo_code"]),
+        "value": float(len(operators)),
+        "source_refs": _unique_refs([*method_refs, *operator_refs]),
+        "confidence_score": confidence,
+        "payload": {
+            "demand_source": "operator_observed_category_supply",
+            "demand_source_status": "operator_observed_fallback",
+            "denominator_scope": geo["geo_level"],
+            "operator_ids": operator_ids,
+            "fallback_reason": (
+                "No category business_count denominator was available; business_count "
+                "uses the deduped source-backed operator count for this geography."
+            ),
+            "business_estimation_method": (
+                "deduped source-backed operator count used as a lower-confidence "
+                "business-count fallback"
+            ),
+        },
+    }
 
 
 def _payload_for_cell(
@@ -825,6 +1115,7 @@ def _neighborhood_rows_for_category(
     category_operators: list[dict[str, Any]],
     csd_geographies: list[dict[str, Any]],
     neighborhood_context: dict[str, Any],
+    method_refs: Sequence[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     csd_by_name = {_key(geo["geo_name"]): geo for geo in csd_geographies}
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -846,9 +1137,14 @@ def _neighborhood_rows_for_category(
         parent_geo = csd_by_name.get(municipality_key)
         if parent_geo is None:
             continue
-        denominator = repo.business_denominator(str(parent_geo["geo_code"]), category)
-        if denominator is None:
-            continue
+        parent_operators = _operators_for_csd(category_operators, str(parent_geo["geo_name"]))
+        denominator = _business_denominator_for_geo(
+            repo=repo,
+            geo=parent_geo,
+            category=category,
+            operators=parent_operators,
+            method_refs=method_refs or _category_method_refs(category),
+        )
         municipality = str(parent_geo["geo_name"])
         neighborhood = _clean_text(operators[0].get("neighborhood")) or neighborhood_key
         total_tagged = int(
@@ -1139,7 +1435,7 @@ def _demand_metadata(
 ) -> dict[str, Any]:
     payloads = [
         payload
-        for payload in (geography_payload, population_payload, business_payload)
+        for payload in (business_payload, population_payload, geography_payload)
         if isinstance(payload, dict)
     ]
     demand_source = next(
@@ -1161,6 +1457,8 @@ def _demand_metadata(
     multiplier = 1.0
     if "fixture" in demand_source or "fixture" in demand_source_status:
         multiplier *= 0.92
+    if "fallback" in demand_source_status or "operator_observed" in demand_source:
+        multiplier *= 0.82
     if denominator_scope != "CSD":
         multiplier *= 0.88
     population_estimation_status = next(
@@ -1297,6 +1595,22 @@ def _unique_refs(refs: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return unique
 
 
+def _operator_seen_within(operator: dict[str, Any], days: int) -> bool:
+    first_seen = operator.get("first_seen_at")
+    if not isinstance(first_seen, datetime):
+        return False
+    if first_seen.tzinfo is None:
+        first_seen = first_seen.replace(tzinfo=timezone.utc)
+    return first_seen >= datetime.now(timezone.utc) - timedelta(days=days)
+
+
+def _refs_for_category_spec(spec: OpportunityCategorySpec) -> list[dict[str, Any]]:
+    refs = _category_method_refs(spec.key)
+    if spec.bundle_definition is None:
+        return refs
+    return _unique_refs([BUNDLE_METHOD_REF, *refs])
+
+
 def _category_method_refs(category: str) -> list[dict[str, Any]]:
     return [
         {
@@ -1308,3 +1622,14 @@ def _category_method_refs(category: str) -> list[dict[str, Any]]:
             "licence": None,
         }
     ]
+
+
+def _label_for_category(category: str) -> str:
+    return category.replace("_", " ").capitalize()
+
+
+def _description_for_category(category: str) -> str:
+    return (
+        "Source-backed wellness category discovered from populated operators "
+        "or denominator rows for opportunity analytics."
+    )

@@ -142,31 +142,71 @@ def opportunity_scorecards(
 def category_velocity(
     category: str | None = Query(default=None),
 ) -> dict[str, Any]:
-    clauses = ["jsonb_array_length(source_refs) > 0"]
+    clauses = ["jsonb_array_length(COALESCE(cv.source_refs, base.taxonomy_source_refs)) > 0"]
     params: list[Any] = []
     if category:
-        clauses.append("category = %s")
+        clauses.append("base.category = %s")
         params.append(category)
     with get_connection() as conn:
         rows = cast(
             list[dict[str, Any]],
             conn.execute(
                 f"""
+                WITH populated_categories AS (
+                  SELECT DISTINCT category.category
+                  FROM "operator" op
+                  CROSS JOIN LATERAL unnest(op.categories) AS category(category)
+                  WHERE jsonb_array_length(op.source_refs) > 0
+                  UNION
+                  SELECT DISTINCT category
+                  FROM category_velocity
+                  WHERE jsonb_array_length(source_refs) > 0
+                ),
+                windows(window_days) AS (
+                  VALUES (30), (90), (180)
+                ),
+                base AS (
+                  SELECT
+                    pc.category,
+                    windows.window_days,
+                    taxonomy.source_refs AS taxonomy_source_refs
+                  FROM populated_categories pc
+                  CROSS JOIN windows
+                  JOIN category_taxonomy taxonomy
+                    ON taxonomy.category = pc.category
+                )
                 SELECT
-                  id,
-                  category,
-                  window_days,
-                  new_operator_count,
-                  job_velocity_count,
-                  event_velocity_count,
-                  news_velocity_count,
-                  component_breakdown,
-                  source_refs,
-                  confidence_score,
-                  calculated_at
-                FROM category_velocity
+                  COALESCE(cv.id, 'velocity_' || base.category || '_' || base.window_days)
+                    AS id,
+                  base.category,
+                  base.window_days,
+                  COALESCE(cv.new_operator_count, 0) AS new_operator_count,
+                  COALESCE(cv.job_velocity_count, 0) AS job_velocity_count,
+                  COALESCE(cv.event_velocity_count, 0) AS event_velocity_count,
+                  COALESCE(cv.news_velocity_count, 0) AS news_velocity_count,
+                  COALESCE(
+                    cv.component_breakdown,
+                    jsonb_build_object(
+                      'new_operator_count', 0,
+                      'job_velocity_count', 0,
+                      'event_velocity_count', 0,
+                      'news_velocity_count', 0,
+                      'window_days', base.window_days,
+                      'source_confidence', 0.5,
+                      'method',
+                      'No persisted velocity row yet; explicit zero counts for '
+                      || 'a source-backed operator category.'
+                    )
+                  ) AS component_breakdown,
+                  COALESCE(cv.source_refs, base.taxonomy_source_refs) AS source_refs,
+                  COALESCE(cv.confidence_score, 0.5) AS confidence_score,
+                  COALESCE(cv.calculated_at, now()) AS calculated_at
+                FROM base
+                LEFT JOIN category_velocity cv
+                  ON cv.category = base.category
+                 AND cv.window_days = base.window_days
                 WHERE {' AND '.join(clauses)}
-                ORDER BY category ASC, window_days ASC
+                ORDER BY base.category ASC, base.window_days ASC
                 """,
                 params,
             ).fetchall(),

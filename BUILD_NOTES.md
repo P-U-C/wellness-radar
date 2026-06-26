@@ -1805,3 +1805,34 @@ Migration `018_p0_scoring_correctness.sql` registers the City Vancouver local-ar
 population source and clears stale derived neighborhood heatmap/proposition rows
 so they are regenerated with corrected denominators. No main-branch push or
 auto-merge is part of this milestone.
+
+## P1A
+
+### Scope
+
+Expanded opportunity analytics beyond `recovery_contrast_therapy`. The job now
+discovers source-backed operator categories plus populated bundle slugs such as
+`yoga_pilates`, inserts missing taxonomy rows for those bundle buckets, and
+generates heatmap/scorecard rows with traced fallback business denominators when
+official category denominators are unavailable. Category velocity is written from
+the same deduped operator set and the API coalesces missing persisted rows to
+explicit zero-count windows for populated operator categories.
+
+### Operator Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner statcan_denominators
+PYTHONPATH=. python3 -m apps.jobs.runner neighborhood_assignment
+PYTHONPATH=. python3 -m apps.jobs.runner venue_classification
+PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
+PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_global_signal
+```
+
+If denominators and neighborhoods are already current, rerun from
+`venue_classification` onward so bundle-keyed opportunity categories use current
+venue classes before score generation.
