@@ -18,6 +18,7 @@ from apps.api.app.routers import (
     health,
     metrics,
     operators,
+    organizations,
     people,
     propositions,
     signals,
@@ -69,6 +70,7 @@ async def request_context_middleware(request: Request, call_next):
 
 app.include_router(health.router)
 app.include_router(operators.router)
+app.include_router(organizations.router)
 app.include_router(signals.router)
 app.include_router(people.router)
 app.include_router(bundles.router)

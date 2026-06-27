@@ -15,6 +15,8 @@ class OperatorItem(BaseModel):
     name: str
     categories: list[str]
     venue_class: str
+    operator_class: str = "unknown"
+    regulated: bool = False
     status: str
     address: str | None
     municipality: str | None
@@ -22,6 +24,9 @@ class OperatorItem(BaseModel):
     neighborhood_assignment_method: str | None = None
     neighborhood_assignment_source: str | None = None
     neighborhood_assignment_confidence: float | None = None
+    is_mobile: bool = False
+    service_area: dict[str, Any] | None = None
+    primary_bundles: list[dict[str, Any]] = Field(default_factory=list)
     lat: float
     lng: float
     confidence_score: float
@@ -79,10 +84,15 @@ class BundleMemberItem(BaseModel):
     name: str
     categories: list[str]
     venue_class: str
+    operator_class: str = "unknown"
+    regulated: bool = False
     status: str
     address: str | None
     municipality: str | None
     neighborhood: str | None
+    is_mobile: bool = False
+    service_area: dict[str, Any] | None = None
+    primary_bundles: list[dict[str, Any]] = Field(default_factory=list)
     lat: float
     lng: float
     phone: str | None = None
@@ -139,6 +149,16 @@ class BundleFirstMoverCityItem(BaseModel):
     source_refs: list[dict[str, Any]]
 
 
+class BundleGlobalSignalStatus(BaseModel):
+    status: str
+    source_status: str
+    reason: str
+    real_count: int = 0
+    hidden_fixture_count: int = 0
+    source_errors: list[str] = Field(default_factory=list)
+    source_refs: list[dict[str, Any]]
+
+
 class BundlesResponse(BaseModel):
     items: list[BundleSummaryItem]
     meta: dict[str, Any]
@@ -149,3 +169,20 @@ class BundleDetailResponse(BundleSummaryItem):
     top_people: list[BundlePersonItem]
     worldwide_match: BundleWorldwideMatch | None = None
     first_mover_cities: list[BundleFirstMoverCityItem] = Field(default_factory=list)
+    first_mover_cities_status: BundleGlobalSignalStatus | None = None
+
+
+class OrganizationItem(BaseModel):
+    id: str
+    role: str = "organization"
+    name: str
+    registry_id: str | None = None
+    orgbook_id: str | None = None
+    organization_type: str | None = None
+    website: str | None = None
+    location: dict[str, Any] | None = None
+    headcount: int | None = None
+    industry: str | None = None
+    industry_code: str | None = None
+    source_refs: list[dict[str, Any]]
+    confidence_score: float

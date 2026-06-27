@@ -26,7 +26,7 @@ from apps.jobs.runner import RunMetrics
 from packages.shared.ids import slugify, stable_id
 from packages.shared.normalizers import normalize_name
 
-BUNDLE_METHOD_VERSION = "r2_bundle_synthesis_p0_scoring"
+BUNDLE_METHOD_VERSION = "p2b_bundle_synthesis_taxonomy"
 BUNDLE_SCORE_FORMULA = (
     "0.30 demand_proxy + 0.15 member_scale + 0.25 low_supply_density "
     "+ 0.20 momentum + 0.10 source_confidence; low_supply_density uses the "
@@ -114,6 +114,55 @@ BUNDLE_TAXONOMY: tuple[BundleDefinition, ...] = (
             "healthcare=massage",
             "leisure=sauna",
         ),
+    ),
+    BundleDefinition(
+        slug="aesthetics_medspa",
+        label="Aesthetics & med-spa",
+        description="Medical aesthetics, injectables, skin clinics, laser, and med-spa operators.",
+        category_terms=("aesthetics_medspa",),
+        keyword_terms=(
+            "medical aesthetics",
+            "medspa",
+            "med spa",
+            "botox",
+            "injectable",
+            "injectables",
+            "filler",
+            "fillers",
+            "cosmetic clinic",
+            "cosmetic medicine",
+            "skin clinic",
+            "skin care clinic",
+            "laser clinic",
+            "dermatology",
+            "microneedling",
+            "skin rejuvenation",
+            "lymphatic drainage",
+        ),
+        tag_terms=(),
+    ),
+    BundleDefinition(
+        slug="recovery_modalities",
+        label="Recovery modalities",
+        description=(
+            "Cryo, compression, percussion, assisted stretch, and mobility recovery "
+            "services."
+        ),
+        category_terms=("recovery_modalities",),
+        keyword_terms=(
+            "cryo",
+            "cryotherapy",
+            "normatec",
+            "compression therapy",
+            "compression boots",
+            "percussion therapy",
+            "percussive therapy",
+            "mobility",
+            "sports recovery",
+            "assisted stretch",
+            "recovery modality",
+        ),
+        tag_terms=(),
     ),
     BundleDefinition(
         slug="boutique_strength",
@@ -257,6 +306,33 @@ BUNDLE_TAXONOMY: tuple[BundleDefinition, ...] = (
         ),
     ),
     BundleDefinition(
+        slug="womens_health",
+        label="Women's health & postnatal",
+        description=(
+            "Pregnancy, prenatal, postnatal, pelvic floor, lactation, doula, and "
+            "midwifery services."
+        ),
+        category_terms=("womens_health",),
+        keyword_terms=(
+            "women's health",
+            "womens health",
+            "midwife",
+            "midwifery",
+            "maternity",
+            "doula",
+            "pregnancy",
+            "prenatal",
+            "postnatal",
+            "postpartum",
+            "perinatal",
+            "pelvic floor",
+            "lactation",
+            "birth centre",
+            "birth center",
+        ),
+        tag_terms=(),
+    ),
+    BundleDefinition(
         slug="social_wellness_clubs",
         label="Social wellness clubs",
         description=(
@@ -265,6 +341,30 @@ BUNDLE_TAXONOMY: tuple[BundleDefinition, ...] = (
         ),
         category_terms=("community_social_wellness",),
         keyword_terms=("community", "social wellness", "club", "group", "membership"),
+        tag_terms=(),
+    ),
+    BundleDefinition(
+        slug="social_hospitality",
+        label="Social hospitality wellness",
+        description=(
+            "Sober-social, wellness cafe, coworking wellness, and third-place "
+            "wellness concepts."
+        ),
+        category_terms=("social_hospitality",),
+        keyword_terms=(
+            "sober social",
+            "sober club",
+            "sober bar",
+            "sober curious",
+            "wellness cafe",
+            "wellness coffee",
+            "wellness coworking",
+            "wellness co working",
+            "coworking wellness",
+            "co working wellness",
+            "social club",
+            "third place wellness",
+        ),
         tag_terms=(),
     ),
     BundleDefinition(
@@ -299,6 +399,8 @@ class BundleAnalyticsRepository(VenueClassRepository):
                   org.name AS organization_name,
                   op.categories,
                   op.venue_class,
+                  op.is_mobile,
+                  op.service_area,
                   op.municipality,
                   op.neighborhood,
                   ST_Y(op.geom::geometry) AS lat,

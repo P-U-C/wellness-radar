@@ -184,8 +184,16 @@ def _category_suggestions(text: str) -> list[str]:
     suggestions: list[str] = []
     if any(term in lowered for term in ["sauna", "cold plunge", "contrast", "recovery"]):
         suggestions.append("recovery_contrast_therapy")
+    if any(term in lowered for term in ["cryo", "normatec", "compression", "mobility"]):
+        suggestions.append("recovery_modalities")
     if any(term in lowered for term in ["spa", "massage", "thermal"]):
         suggestions.append("spa_thermal")
+    if any(term in lowered for term in ["botox", "injectable", "filler", "medical aesthetics"]):
+        suggestions.append("aesthetics_medspa")
+    if any(term in lowered for term in ["prenatal", "postnatal", "pelvic floor", "doula"]):
+        suggestions.append("womens_health")
+    if any(term in lowered for term in ["sober social", "wellness cafe", "wellness coworking"]):
+        suggestions.append("social_hospitality")
     if any(term in lowered for term in ["fitness", "active", "movement"]):
         suggestions.append("fitness_movement")
     if not suggestions and "health" in lowered:

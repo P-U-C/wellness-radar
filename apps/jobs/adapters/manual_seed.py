@@ -8,7 +8,7 @@ from typing import Any
 from packages.schemas.canonical import CanonicalOperator
 from packages.shared.contacts import build_contact_method
 from packages.shared.ids import stable_id
-from packages.shared.normalizers import normalize_name
+from packages.shared.normalizers import infer_service_model, normalize_name
 from packages.shared.provenance import source_ref
 
 DEFAULT_SEED_PATH = (
@@ -46,6 +46,12 @@ class ManualRecoverySeedAdapter:
             for category in str(raw.get("categories") or "").split("|")
             if category.strip()
         ]
+        is_mobile, service_area = infer_service_model(
+            name,
+            raw.get("categories"),
+            raw.get("notes"),
+            raw.get("service_area"),
+        )
         refs = [
             source_ref(
                 source_name=self.name,
@@ -85,6 +91,8 @@ class ManualRecoverySeedAdapter:
                 source_refs=refs,
                 confidence_score=_float_or_none(raw.get("confidence_score")) or 0.6,
                 occurred_at=datetime.now(timezone.utc),
+                is_mobile=is_mobile,
+                service_area=service_area,
                 website=website,
                 contacts=contacts,
                 payload={

@@ -38,3 +38,17 @@ codex-design.log
 codex-intel.log
 .codex-intel-*-done
 .codex-intel-*-failed
+
+# codex P0-fix orchestration (local only)
+.codex-fix-prompt*.md
+.codex-fix-runner.sh
+codex-fix.log
+.codex-fix-*-done
+.codex-fix-*-failed
+
+# codex chain2 (P1/P2 roadmap) orchestration (local only)
+.codex-chain2-prompt*.md
+.codex-chain2-runner.sh
+codex-chain2.log
+.codex-chain2-*-done
+.codex-chain2-*-failed

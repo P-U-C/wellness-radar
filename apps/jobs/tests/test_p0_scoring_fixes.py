@@ -10,6 +10,12 @@ from apps.jobs.analytics.opportunity import (
     _payload_for_cell,
 )
 from apps.jobs.analytics.scoring import dedupe_operators, supply_sparsity_score
+from apps.jobs.analytics.venue_class import (
+    classify_operator_class,
+    classify_operator_venue_class,
+    is_regulated_operator,
+    operator_class_reason,
+)
 from packages.shared.normalizers import normalize_categories
 
 SOURCE_REF = {
@@ -181,6 +187,46 @@ def test_payload_low_supply_uses_absolute_per_capita_saturation() -> None:
     assert payload["components"]["low_supply_density"] == 0.0
 
 
+def test_family_targeted_demand_uses_neighborhood_demographics() -> None:
+    marpole = _demographic_payload("Marpole")
+    fairview = _demographic_payload("Fairview")
+
+    assert marpole["components"]["target_demo_fit"] > fairview["components"]["target_demo_fit"]
+    assert marpole["components"]["demand_proxy"] > fairview["components"]["demand_proxy"]
+    fit = marpole["component_breakdown"]["target_demo_fit_components"]
+    assert fit["target_demo"] == "young_families"
+    assert fit["signals"]["age_band"] == "age_0_19_pct"
+    assert fit["demographics"]["households_with_children_pct"] == 35.0
+    assert any(
+        ref["source_name"] == "city_vancouver_census_local_area_profiles_2016"
+        for ref in marpole["source_refs"]
+    )
+
+
+def test_medical_aesthetics_operator_is_medical_adjacent_and_regulated() -> None:
+    operator = _operator(
+        "op_quest",
+        "QUEST MEDICAL AESTHETICS",
+        "Vancouver",
+        "Downtown",
+        categories=["spa_thermal"],
+        raw_payloads=[
+            {
+                "businessname": "QUEST MEDICAL AESTHETICS",
+                "businesstype": "Health Services",
+                "businesssubtype": "Medical Aesthetics Clinic",
+            }
+        ],
+    )
+
+    assert classify_operator_venue_class(operator) == "commercial_wellness"
+    assert classify_operator_class(operator) == "medical_adjacent"
+    assert is_regulated_operator(operator) is True
+    reason = operator_class_reason(operator)
+    assert "medical aesthetics" in reason["matched_keywords"]["medical_adjacent"]
+    assert reason["source_refs"][0]["source_name"] == "manual_seed"
+
+
 def test_bundle_hygiene_removes_named_bad_members_and_keeps_legitimate_members() -> None:
     operators = [
         _operator(
@@ -316,6 +362,39 @@ def test_bundle_hygiene_removes_named_bad_members_and_keeps_legitimate_members()
 def _bundle_member_names(bundles: list[dict[str, Any]], label: str) -> set[str]:
     bundle = next(item for item in bundles if item["label"] == label)
     return {str(member["operator"]["name"]) for member in bundle["memberships"]}
+
+
+def _demographic_payload(geo_name: str) -> dict[str, Any]:
+    return _payload_for_cell(
+        category="womens_health",
+        row={
+            "geo": {
+                **_csd("5915022", geo_name, 30000),
+                "geo_level": "neighborhood",
+                "geo_name": geo_name,
+            },
+            "denominator": {
+                "id": f"den_{geo_name}",
+                "value": 10,
+                "source_refs": [SOURCE_REF],
+                "confidence_score": 0.9,
+                "payload": {"demand_source_status": "fixture"},
+            },
+            "operators": [],
+            "signal_count": 0,
+            "signal_refs": [],
+            "signal_conf": [],
+            "density": 0.0,
+            "business_density": 1.0,
+            "new_operators": 0,
+            "nearest_competitors": [],
+            "demand": {"quality_multiplier": 1.0, "demand_source_status": "fixture"},
+        },
+        max_population=30000,
+        max_business_density=1.0,
+        max_activity=1,
+        max_growth=1,
+    )
 
 
 def _operator(

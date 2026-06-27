@@ -30,7 +30,7 @@ export function OpportunityPanel({
   const rankedScorecards = [...scorecards].sort((a, b) => b.opportunity_score - a.opportunity_score);
   const rankedPropositions = [...propositions].sort((a, b) => b.opportunity_score - a.opportunity_score);
   const reachableCount = operators.filter((operator) => (operator.contacts ?? []).length > 0).length;
-  const fixtureBacked = trends.some((trend) => trend.is_stub);
+  const trendPending = trends.length === 0 || trends.some((trend) => trend.is_stub || trend.source_status === "data_pending");
   const level = heatmapCells[0]?.geo_level ?? "CSD";
   const method =
     rankedScorecards[0]?.calculation_method ??
@@ -83,9 +83,9 @@ export function OpportunityPanel({
           Method: {method}. Velocity inputs currently total {velocityTotal} observed source-backed events. Scores are
           supply-demand signals, not guaranteed attractiveness. Reachable operators: {reachableCount}.
         </p>
-        <span className={fixtureBacked ? "is-fixture" : ""}>
-          {fixtureBacked ? <AlertTriangle size={13} /> : null}
-          peer-city inputs {fixtureBacked ? "fixture-backed" : "source-backed"} / top score{" "}
+        <span className={trendPending ? "is-fixture" : ""}>
+          {trendPending ? <AlertTriangle size={13} /> : null}
+          peer-city inputs {trendPending ? "data pending" : "source-backed"} / top score{" "}
           {rankedScorecards[0] ? formatScore(rankedScorecards[0].opportunity_score) : "n/a"}
         </span>
       </footer>

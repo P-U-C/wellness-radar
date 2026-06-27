@@ -46,20 +46,53 @@ def list_trends(
                 params,
             ).fetchall(),
         )
-    return {"items": [_trend_item(row) for row in rows], "meta": {"count": len(rows)}}
+    live_rows = [row for row in rows if not row["is_stub"]]
+    hidden_stub_count = len(rows) - len(live_rows)
+    status = "live" if live_rows else "data_pending"
+    pending_reason = None
+    if not live_rows and hidden_stub_count:
+        pending_reason = (
+            "Fixture peer-city trend rows are hidden until a reviewed live trends "
+            "provider is available."
+        )
+    elif not live_rows:
+        pending_reason = "No reviewed live trend rows are available for this query."
+    return {
+        "items": [_trend_item(row) for row in live_rows],
+        "meta": {
+            "count": len(live_rows),
+            "total_rows": len(rows),
+            "hidden_stub_count": hidden_stub_count,
+            "status": status,
+            "pending_reason": pending_reason,
+            "source_status_counts": {
+                "live": len(live_rows),
+                "stub_hidden": hidden_stub_count,
+            },
+        },
+    }
 
 
 def _trend_item(row: dict[str, Any]) -> dict[str, Any]:
+    is_stub = bool(row["is_stub"])
+    source_status = "data_pending" if is_stub else "live"
     return {
         "term": row["term"],
         "city": row["city"],
         "geography_code": row["geography_code"],
-        "growth_class": row["growth_class"],
-        "series": row["series"],
+        "growth_class": "data_pending" if is_stub else row["growth_class"],
+        "series": [] if is_stub else row["series"],
         "source_name": row["source_name"],
         "fetched_at": row["fetched_at"].isoformat(),
         "source_refs": row["source_refs"],
         "confidence_score": float(row["confidence_score"]),
-        "is_stub": row["is_stub"],
+        "is_stub": is_stub,
         "methodology": row["methodology"],
+        "source_status": source_status,
+        "status": source_status,
+        "pending_reason": (
+            "Illustrative fixture hidden from live demand views."
+            if is_stub
+            else None
+        ),
     }

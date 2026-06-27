@@ -1046,6 +1046,13 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.wr-answer-tag.is-pending,
+.sectionHeader span.is-pending,
+.trendTitle span.is-pending {
+  background: rgba(214, 158, 46, 0.14);
+  color: var(--wr-warn, #d69e2e);
+}
+
 .wr-fixture-flag {
   margin-left: 6px;
   padding: 1px 5px;
@@ -4543,6 +4550,13 @@ select {
 .trendTitle span {
   color: #2bd4a7;
   font-weight: 800;
+}
+
+.trendPending {
+  margin: 0;
+  color: #a8b0b5;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .componentGrid {

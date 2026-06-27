@@ -1805,3 +1805,183 @@ Migration `018_p0_scoring_correctness.sql` registers the City Vancouver local-ar
 population source and clears stale derived neighborhood heatmap/proposition rows
 so they are regenerated with corrected denominators. No main-branch push or
 auto-merge is part of this milestone.
+
+## P1A
+
+### Scope
+
+Expanded opportunity analytics beyond `recovery_contrast_therapy`. The job now
+discovers source-backed operator categories plus populated bundle slugs such as
+`yoga_pilates`, inserts missing taxonomy rows for those bundle buckets, and
+generates heatmap/scorecard rows with traced fallback business denominators when
+official category denominators are unavailable. Category velocity is written from
+the same deduped operator set and the API coalesces missing persisted rows to
+explicit zero-count windows for populated operator categories.
+
+### Operator Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner statcan_denominators
+PYTHONPATH=. python3 -m apps.jobs.runner neighborhood_assignment
+PYTHONPATH=. python3 -m apps.jobs.runner venue_classification
+PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
+PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_global_signal
+```
+
+If denominators and neighborhoods are already current, rerun from
+`venue_classification` onward so bundle-keyed opportunity categories use current
+venue classes before score generation.
+
+## P1B
+
+### Scope
+
+Made the "who do I call" layer category-relevant and source-backed. `/leads/{id}`
+now returns lead detail, `/leads` accepts `category` and `bundle` filters and
+returns a non-null `category` for leads where the operator has categories.
+`/people` accepts `category`, derives `primary_category` from public
+operator/practitioner affiliations, and the default influence ordering demotes
+pure government/policy figures behind real category operators. `/people-graph`
+supports category filtering and graph rows now carry category metadata for
+operator-linked people and organizations.
+
+### Contact Coverage
+
+Local DB baseline before migration: 251 of 2,112 source-backed operators had an
+`operator_contact` row (11.88%). After applying
+`019_p1b_actionable_contacts_people.sql`: 253 of 2,112 (11.98%), with 5
+idempotent contact rows backfilled from already-ingested OSM/operator website
+source refs. Current contact-type counts: 163 operators with phone, 28 with
+email, 238 with website.
+
+### Live Checks
+
+- `/leads?category=recovery_contrast_therapy&limit=5` returned category-matched
+  recovery leads with contacts first.
+- `/leads/{id}` returned 200 for a live recovery lead.
+- `/people?category=recovery_contrast_therapy&limit=5` returned Peter Chen,
+  AetherHaus Team, Sophie Labrosse, and Tality Wellness Team ahead of policy
+  figures.
+- After rerunning `people_graph`, 191 of 195 person nodes and 582 of 582
+  operator nodes had `primary_category`; `/people-graph?category=recovery_contrast_therapy`
+  returned category-tagged person nodes and graph edges.
+
+### Operator Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner people_graph
+```
+
+## P1C
+
+### Scope
+
+Removed the fake live breakout surface for G1. `/trends` now hides
+`peer_city_trends_fixture` rows from the default response and returns explicit
+`meta.status = "data_pending"` plus `hidden_stub_count`/`pending_reason` when
+only fixtures exist. The React trend tiles and opportunity footer now render
+that as "data pending" instead of showing fixture sparklines or breakout labels.
+
+Bundle Q4/Q5 now use the existing real-source `bundle_global_signal` contract
+honestly:
+
+- Real/cached rows from `gdelt_doc` and `osm_overpass_first_mover` remain visible
+  with their source refs.
+- Missing `bundle_global` rows return `worldwide_match.source_status =
+  "data_pending"` with a reason and method source ref.
+- `fixture_fallback` worldwide rows are hidden behind the same pending state, so
+  fallback verdicts such as "global wave" cannot display as evidence.
+- `first_mover_cities` includes only live/cached city rows. If none exist, it is
+  an explicit empty-with-reason via `first_mover_cities_status`.
+
+### Real vs Gated
+
+No new live provider was added and no new category is claimed as newly real in
+this milestone. Categories with already-computed `bundle_global_signal` rows
+marked `live` or `cached` are shown as real GDELT/OSM aggregate evidence. Every
+other category, including categories whose only rows are fixture fallback, is
+gated as `data_pending` until `bundle_global_signal` is run successfully against
+live/free sources.
+
+The legacy `peer_city_trends_fixture` data remains stored for deterministic job
+tests, but it is no longer presented as live demand or a breakout signal by the
+API/UI default path.
+
+## P2A
+
+### Scope
+
+Added a demographic demand layer for reviewed Vancouver local areas using the
+City of Vancouver 2016 Census local-area profile source. Opportunity scorecards
+now blend population demand with decomposed target-demo fit across age-band,
+family-density, income, and business-intensity components. The analytics API can
+retarget this layer with `target_demo=young_families|young_adults_20_39|affluent_35_55|retirees_55_plus|broad`.
+
+Operators now carry `operator_class`, `regulated`, and source-backed
+classification reasons so medical-adjacent operators such as medical aesthetics,
+clinic, injectable, IV, RMT, physio, chiropractic, and naturopathic businesses
+are separated from fitness, retail, personal-service, and public-recreation
+venues.
+
+### Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner venue_classification
+PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
+PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
+```
+
+## P2B
+
+### Scope
+
+Added the missing P2B taxonomy/model surfaces for G12/G13:
+
+- New source-backed taxonomy categories and rules: `aesthetics_medspa`,
+  expanded `womens_health`, `social_hospitality`, and `recovery_modalities`.
+  The P2B migration seeds `category_classification_rule` with source refs to
+  `docs/persona-gap-review/GAP_REPORT.md#G12`, updates category constraints,
+  and backfills known name-evidence operators such as QUEST Medical Aesthetics
+  and pregnancy/prenatal/postnatal operators into the correct categories.
+- Operators now support `is_mobile` and optional `service_area`. Normalizers
+  infer mobile service models from source text such as mobile, at-home,
+  in-home, house-call, onsite, and Metro Vancouver service-area language.
+- Opportunity analytics counts mobile/service-area operators against declared
+  municipalities/neighborhoods rather than only a storefront point. Heatmap
+  trace payloads expose `mobile_operator_ids`, `service_area_operator_ids`,
+  `service_area_supply_count`, and `primary_bundles`.
+- Added `/analytics/proximity` for co-location theses such as recovery modality
+  operators within N km of fitness operators. Responses include nearby reference
+  operators, distance, proximity score, and combined source refs.
+- Added `/organizations` and `/employers` as a minimal OrgBook-linked
+  organization/employer directory. It returns name, registry/OrgBook ids,
+  linked operator location, and nullable `headcount`, `industry`, and
+  `industry_code` fields. Null means no source-backed public field was present.
+- Bundle synthesis now includes P2B bundles for med-spa, women/postnatal,
+  social hospitality, and recovery modalities. Operator/proposition API payloads
+  expose multiple `primary_bundles` instead of forcing hybrid concepts into one
+  tag.
+
+### Recompute Steps
+
+To apply this to live data:
+
+```bash
+python3 -m db.migrate
+PYTHONPATH=. python3 -m apps.jobs.runner venue_classification
+PYTHONPATH=. python3 -m apps.jobs.runner bundle_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner opportunity_analytics
+PYTHONPATH=. python3 -m apps.jobs.runner proposition_synthesis
+PYTHONPATH=. python3 -m apps.jobs.runner people_graph
+```

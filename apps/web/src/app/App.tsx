@@ -128,6 +128,7 @@ export function App() {
     setError(null);
     try {
       const analyticsCategory = category === "all" ? "recovery_contrast_therapy" : category;
+      const peopleCategory = category === "all" ? undefined : category;
       const [
         operatorData,
         signalData,
@@ -149,14 +150,14 @@ export function App() {
         fetchSourceRuns(),
         fetchSourceFreshness(),
         fetchBundles(),
-        fetchPeople(peopleSort),
+        fetchPeople(peopleSort, peopleCategory),
         fetchWhitespace(analyticsCategory, opportunityGeoLevel),
         fetchOpportunityScorecards(analyticsCategory, opportunityGeoLevel),
         fetchPropositions(analyticsCategory, opportunityGeoLevel),
         fetchCategoryVelocity(analyticsCategory),
         fetchDailyBrief(),
         fetchTrends(),
-        fetchPeopleGraph(),
+        fetchPeopleGraph(peopleCategory),
         fetchObservability()
       ]);
       setOperators(operatorData);

@@ -14,9 +14,12 @@ CATEGORY_LABELS = {
     "fitness_movement": "fitness and movement",
     "mind_meditation": "mind and meditation",
     "spa_thermal": "spa and thermal",
+    "aesthetics_medspa": "aesthetics and med-spa",
     "nutrition_longevity": "nutrition and longevity",
     "allied_health": "allied health",
     "womens_health": "women's health",
+    "social_hospitality": "social hospitality wellness",
+    "recovery_modalities": "recovery modalities",
     "preventive_diagnostic": "preventive and diagnostic",
     "mental_health": "mental health",
     "community_social_wellness": "community and social wellness",
@@ -120,6 +123,39 @@ SPEND_PROXIES: dict[str, SpendProxy] = {
         confidence_multiplier=0.66,
         source_refs=[STATCAN_PERSONAL_CARE_REF, STATCAN_HOUSEHOLD_SIZE_REF],
     ),
+    "aesthetics_medspa": SpendProxy(
+        label="StatCan personal care service household spend proxy",
+        annual_value=515.0,
+        unit="per_household",
+        basis=(
+            "Average Canadian household personal-care service spend proxy; med-spa "
+            "procedure revenue is not inferred from this value."
+        ),
+        confidence_multiplier=0.58,
+        source_refs=[STATCAN_PERSONAL_CARE_REF, STATCAN_HOUSEHOLD_SIZE_REF],
+    ),
+    "recovery_modalities": SpendProxy(
+        label="StatCan 2023 recreation household spend proxy",
+        annual_value=5231.0,
+        unit="per_household",
+        basis=(
+            "Average Canadian household recreation spending in 2023; used only as "
+            "context for recovery modality demand."
+        ),
+        confidence_multiplier=0.66,
+        source_refs=[STATCAN_RECREATION_SPEND_REF, STATCAN_HOUSEHOLD_SIZE_REF],
+    ),
+    "social_hospitality": SpendProxy(
+        label="StatCan 2023 recreation household spend proxy",
+        annual_value=5231.0,
+        unit="per_household",
+        basis=(
+            "Average Canadian household recreation spending in 2023; cafe, sober, "
+            "and coworking wellness capture is not inferred."
+        ),
+        confidence_multiplier=0.56,
+        source_refs=[STATCAN_RECREATION_SPEND_REF, STATCAN_HOUSEHOLD_SIZE_REF],
+    ),
     "allied_health": SpendProxy(
         label="CIHI out-of-pocket health expenditure per capita proxy",
         annual_value=1243.4,
@@ -197,6 +233,7 @@ class PropositionRepository(DatabaseRepository):
               nearest_competitors,
               confidence_narrative,
               supporting_signals,
+              primary_bundles,
               component_breakdown,
               opportunity_score,
               confidence_score,
@@ -204,7 +241,7 @@ class PropositionRepository(DatabaseRepository):
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (category, geo_code) DO UPDATE SET
               heatmap_cell_id = EXCLUDED.heatmap_cell_id,
@@ -225,6 +262,7 @@ class PropositionRepository(DatabaseRepository):
               nearest_competitors = EXCLUDED.nearest_competitors,
               confidence_narrative = EXCLUDED.confidence_narrative,
               supporting_signals = EXCLUDED.supporting_signals,
+              primary_bundles = EXCLUDED.primary_bundles,
               component_breakdown = EXCLUDED.component_breakdown,
               opportunity_score = EXCLUDED.opportunity_score,
               confidence_score = EXCLUDED.confidence_score,
@@ -253,6 +291,7 @@ class PropositionRepository(DatabaseRepository):
                 Jsonb(payload["nearest_competitors"]),
                 payload["confidence_narrative"],
                 Jsonb(payload["supporting_signals"]),
+                payload["primary_bundles"],
                 Jsonb(payload["component_breakdown"]),
                 payload["opportunity_score"],
                 payload["confidence_score"],
@@ -285,6 +324,7 @@ def run_proposition_synthesis(
 
 def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
     trace = cast(dict[str, Any], row["trace_payload"] or {})
+    score_components = cast(dict[str, Any], row.get("component_breakdown") or {})
     source_refs = _unique_refs(cast(list[dict[str, Any]], row["source_refs"] or []))
     category = str(row["category"])
     category_label = CATEGORY_LABELS.get(category, category.replace("_", " "))
@@ -300,7 +340,18 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
     demand_source_status = str(trace.get("demand_source_status") or "unknown")
     spend_proxy = SPEND_PROXIES.get(category, DEFAULT_SPEND_PROXY)
     spend_proxy_value = spend_proxy.per_person_value()
-    market_size = (population or 0.0) * spend_proxy_value if population is not None else None
+    target_demo_fit = _optional_float(score_components.get("target_demo_fit"))
+    target_demo = str(trace.get("target_demo") or "category_default")
+    primary_bundles = [
+        str(bundle)
+        for bundle in trace.get("primary_bundles", [])
+        if str(bundle).strip()
+    ]
+    market_size = (
+        (population or 0.0) * spend_proxy_value * (target_demo_fit or 1.0)
+        if population is not None
+        else None
+    )
     confidence = _proposition_confidence(float(row["confidence_score"]), trace, spend_proxy)
     headline = f"{area}: source-backed {category_label} whitespace"
     population_evidence = _population_evidence(population, trace, geo_level, municipality)
@@ -310,6 +361,8 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
         proxy=spend_proxy,
         per_person_value=spend_proxy_value,
         market_size=market_size,
+        target_demo=target_demo,
+        target_demo_fit=target_demo_fit,
     )
     competitor_line = _competitor_line(nearest_competitors, competitor_count, radius_km)
     confidence_narrative = _confidence_narrative(
@@ -348,6 +401,8 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
             "label": market_sizing_line,
             "raw_value": round(market_size, 2) if market_size is not None else None,
             "proxy_value_per_person": round(spend_proxy_value, 2),
+            "target_demo": target_demo,
+            "target_demo_fit": target_demo_fit,
             "source_refs": spend_proxy.source_refs,
         },
         {
@@ -397,11 +452,15 @@ def proposition_from_heatmap_cell(row: dict[str, Any]) -> dict[str, Any]:
         "nearest_competitors": nearest_competitors,
         "confidence_narrative": confidence_narrative,
         "supporting_signals": supporting_signals,
+        "primary_bundles": primary_bundles,
         "component_breakdown": {
             "inputs": trace,
             "population_evidence": population_evidence,
             "business_evidence": business_evidence,
             "market_sizing_line": market_sizing_line,
+            "target_demo": target_demo,
+            "target_demo_fit": target_demo_fit,
+            "primary_bundles": primary_bundles,
             "nearest_competitors": nearest_competitors,
             "confidence_narrative": confidence_narrative,
             "spend_proxy": {
@@ -454,16 +513,25 @@ def _market_sizing_line(
     proxy: SpendProxy,
     per_person_value: float,
     market_size: float | None,
+    target_demo: str,
+    target_demo_fit: float | None,
 ) -> str:
+    demo_clause = (
+        f" x target-demo fit {target_demo_fit:.2f} ({target_demo})"
+        if target_demo_fit is not None
+        else ""
+    )
     if population is None or market_size is None:
         return (
             f"Catchment spend context: unknown catchment population x "
-            f"{_format_money(per_person_value)} per-person {proxy.label.lower()}; "
+            f"{_format_money(per_person_value)} per-person {proxy.label.lower()}"
+            f"{demo_clause}; "
             "context unavailable until the population denominator is present."
         )
     return (
         f"Catchment spend context: {_format_number(population, 'people')} x "
-        f"{_format_money(per_person_value)} per-person {proxy.label.lower()} = "
+        f"{_format_money(per_person_value)} per-person {proxy.label.lower()}"
+        f"{demo_clause} = "
         f"{_format_money(market_size)} of annual household spending in the catchment "
         "(context for demand, not capturable revenue)."
     )

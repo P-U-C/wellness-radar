@@ -8,9 +8,12 @@ The category enum is frozen for M3 analytics and matches `AGENT_SPEC.md` section
 - `fitness_movement`
 - `mind_meditation`
 - `spa_thermal`
+- `aesthetics_medspa`
 - `nutrition_longevity`
 - `allied_health`
 - `womens_health`
+- `social_hospitality`
+- `recovery_modalities`
 - `preventive_diagnostic`
 - `mental_health`
 - `community_social_wellness`
@@ -29,10 +32,13 @@ These mappings unblock denominator joins for M3, but they are not legal/statisti
 | `fitness_movement` | 713940 | Fitness and recreational sports centres | Primary | Primary business-count denominator for gyms and fitness facilities. |
 | `mind_meditation` | 611690 | All other schools and instruction | Secondary | Class-based meditation/breathwork may map here. |
 | `spa_thermal` | 812190 | Other personal care services | Primary | Spa, sauna, bathhouse, massage, and thermal services overlap this code. |
+| `aesthetics_medspa` | 812190 | Other personal care services | Secondary | Broad personal-care proxy only; procedure-level demand or regulated status is not inferred from NAICS. |
+| `recovery_modalities` | 713940 | Fitness and recreational sports centres | Secondary | Athlete recovery modalities often co-locate with fitness/recreation but require source text evidence. |
 | `nutrition_longevity` | 621390 | Offices of all other health practitioners | Secondary | Practitioner-led services only; product retail maps separately. |
 | `allied_health` | 621340 | Offices of physical, occupational, and speech therapists and audiologists | Primary | Includes physiotherapy/kinesiology-style private practice examples. |
 | `allied_health` | 621390 | Offices of all other health practitioners | Secondary | Catch-all for other practitioner offices. |
 | `womens_health` | 621410 | Family planning centres | Secondary | The category is broader than this NAICS code. |
+| `social_hospitality` | 813410 | Civic and social organizations | Secondary | Sober-social/cafe/coworking wellness concepts are mixed hospitality/community models; plain cafes are not included. |
 | `preventive_diagnostic` | 621510 | Medical and diagnostic laboratories | Primary | Lab/diagnostic denominator. |
 | `mental_health` | 621330 | Offices of mental health practitioners, except physicians | Primary | Counselling/psychology/psychotherapy denominator. |
 | `community_social_wellness` | 813410 | Civic and social organizations | Secondary | Useful for community models; commercial venues may map elsewhere. |

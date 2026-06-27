@@ -263,6 +263,8 @@ class DatabaseRepository:
               address,
               municipality,
               neighborhood,
+              is_mobile,
+              service_area,
               phone,
               website,
               social_links,
@@ -277,6 +279,8 @@ class DatabaseRepository:
               %s,
               %s,
               %s::operator_status,
+              %s,
+              %s,
               %s,
               %s,
               %s,
@@ -308,6 +312,12 @@ class DatabaseRepository:
               address = COALESCE(EXCLUDED.address, "operator".address),
               municipality = COALESCE(EXCLUDED.municipality, "operator".municipality),
               neighborhood = COALESCE(EXCLUDED.neighborhood, "operator".neighborhood),
+              is_mobile = "operator".is_mobile OR EXCLUDED.is_mobile,
+              service_area = CASE
+                WHEN EXCLUDED.service_area IS NULL THEN "operator".service_area
+                WHEN "operator".service_area IS NULL THEN EXCLUDED.service_area
+                ELSE "operator".service_area || EXCLUDED.service_area
+              END,
               phone = CASE
                 WHEN EXCLUDED.phone IS NULL THEN "operator".phone
                 WHEN "operator".phone IS NULL THEN EXCLUDED.phone
@@ -343,6 +353,8 @@ class DatabaseRepository:
                 operator.address,
                 operator.municipality,
                 operator.neighborhood,
+                operator.is_mobile,
+                Jsonb(operator.service_area) if operator.service_area is not None else None,
                 operator.phone,
                 operator.website,
                 Jsonb(operator.social_links),
@@ -1008,6 +1020,8 @@ class InMemoryRepository:
         if existing is not None:
             operator.phone = existing.phone or operator.phone
             operator.website = existing.website or operator.website
+            operator.is_mobile = existing.is_mobile or operator.is_mobile
+            operator.service_area = operator.service_area or existing.service_area
             operator.social_links = {**operator.social_links, **existing.social_links}
             operator.contacts = merge_contact_methods(existing.contacts, operator.contacts)
             operator.source_refs = _unique_refs([*existing.source_refs, *operator.source_refs])

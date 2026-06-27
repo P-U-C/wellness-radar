@@ -102,9 +102,9 @@ export type WorldwideMatch = {
   verdict: string;
   source_status: string;
   confidence_score: number;
-  window_days?: number;
+  window_days?: number | null;
   methodology_version?: string;
-  components?: Record<string, number>;
+  components?: Record<string, unknown>;
   source_errors?: string[];
   source_refs: SourceRef[];
 };
@@ -120,12 +120,23 @@ export type FirstMoverCity = {
   source_refs: SourceRef[];
 };
 
+export type GlobalSignalStatus = {
+  status: string;
+  source_status: string;
+  reason: string;
+  real_count: number;
+  hidden_fixture_count: number;
+  source_errors: string[];
+  source_refs: SourceRef[];
+};
+
 export type BundleDetail = BundleSummary & {
   venue_class?: string | null;
   members: BundleMember[];
   top_people: BundlePerson[];
   worldwide_match: WorldwideMatch | null;
   first_mover_cities: FirstMoverCity[];
+  first_mover_cities_status?: GlobalSignalStatus | null;
 };
 
 export type Signal = {
@@ -194,6 +205,8 @@ export type Person = {
   name: string;
   roles: string[];
   primary_role: string | null;
+  primary_category?: string | null;
+  categories?: string[];
   primary_affiliation: string | null;
   affiliation_role: string | null;
   contacts?: ContactMethod[];
@@ -425,6 +438,9 @@ export type TrendTile = {
   confidence_score: number;
   is_stub: boolean;
   methodology: string;
+  source_status?: string;
+  status?: string;
+  pending_reason?: string | null;
 };
 
 export type GraphNode = {
@@ -569,8 +585,11 @@ export async function fetchObservability(): Promise<ObservabilitySummary | null>
   return getJson<ObservabilitySummary>("/admin/observability", { auth: true, optional: true });
 }
 
-export async function fetchPeople(sort = "confidence"): Promise<Person[]> {
+export async function fetchPeople(sort = "confidence", category?: string): Promise<Person[]> {
   const params = new URLSearchParams({ sort });
+  if (category && category !== "all") {
+    params.set("category", category);
+  }
   const data = await getJson<{ items: Person[] }>(`/people?${params.toString()}`);
   if (!data) {
     return [];
@@ -644,9 +663,17 @@ export async function fetchTrends(): Promise<TrendTile[]> {
   return data?.items ?? [];
 }
 
-export async function fetchPeopleGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+export async function fetchPeopleGraph(
+  category?: string
+): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+  const params = new URLSearchParams();
+  if (category && category !== "all") {
+    params.set("category", category);
+  }
+  const query = params.toString();
+  const path = query ? `/people-graph?${query}` : "/people-graph";
   return (
-    (await getJson<{ nodes: GraphNode[]; edges: GraphEdge[] }>("/people-graph")) ?? {
+    (await getJson<{ nodes: GraphNode[]; edges: GraphEdge[] }>(path)) ?? {
       nodes: [],
       edges: []
     }

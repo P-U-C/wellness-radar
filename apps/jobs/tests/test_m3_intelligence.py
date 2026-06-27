@@ -258,6 +258,9 @@ def test_graph_builds_public_affiliation_edges_and_centrality() -> None:
     assert len(nodes) == 2
     assert len(edges) == 1
     assert edges[0].edge_type == "employee"
+    person_node = next(node for node in nodes if node.node_type == "person")
+    assert person_node.primary_category == "recovery_contrast_therapy"
+    assert person_node.payload["categories"] == ["recovery_contrast_therapy"]
     assert centrality["node_person_person_a"] == 1
     assert communities["node_person_person_a"] == communities["node_operator_op_aetherhaus"]
 

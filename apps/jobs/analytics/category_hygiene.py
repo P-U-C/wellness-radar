@@ -42,6 +42,69 @@ COLD_MODALITY_TERMS = (
     "bathhouse",
     "recovery room",
 )
+RECOVERY_MODALITY_TERMS = (
+    "cryo",
+    "cryotherapy",
+    "normatec",
+    "compression therapy",
+    "compression boots",
+    "percussion therapy",
+    "percussive therapy",
+    "mobility",
+    "sports recovery",
+    "assisted stretch",
+    "recovery modality",
+)
+AESTHETICS_TERMS = (
+    "medical aesthetics",
+    "medspa",
+    "med spa",
+    "botox",
+    "injectable",
+    "injectables",
+    "filler",
+    "fillers",
+    "cosmetic clinic",
+    "cosmetic medicine",
+    "skin clinic",
+    "skin care clinic",
+    "laser clinic",
+    "dermatology",
+    "microneedling",
+    "skin rejuvenation",
+    "lymphatic drainage",
+)
+WOMENS_HEALTH_TERMS = (
+    "womens health",
+    "women s health",
+    "midwife",
+    "midwifery",
+    "maternity",
+    "doula",
+    "pregnancy",
+    "prenatal",
+    "postnatal",
+    "postpartum",
+    "perinatal",
+    "pelvic floor",
+    "lactation",
+    "birth centre",
+    "birth center",
+)
+SOCIAL_HOSPITALITY_TERMS = (
+    "sober social",
+    "sober club",
+    "sober bar",
+    "sober curious",
+    "wellness cafe",
+    "wellness coffee",
+    "wellness coworking",
+    "wellness co working",
+    "coworking wellness",
+    "co working wellness",
+    "social club",
+    "third place wellness",
+)
 REHAB_TERMS = (
     "addiction",
     "drug",
@@ -123,6 +186,16 @@ def bundle_match_is_allowed(
         return _longevity_match_allowed(match_reasons, evidence_text)
     if slug == "boutique_strength":
         return _strength_match_allowed(match_reasons, evidence_text)
+    if slug == "aesthetics_medspa":
+        return _has_any(evidence_text, AESTHETICS_TERMS)
+    if slug == "recovery_modalities":
+        return _has_any(evidence_text, RECOVERY_MODALITY_TERMS) and not _has_any(
+            evidence_text, REHAB_TERMS
+        )
+    if slug == "womens_health":
+        return _has_any(evidence_text, WOMENS_HEALTH_TERMS)
+    if slug == "social_hospitality":
+        return _has_any(evidence_text, SOCIAL_HOSPITALITY_TERMS)
     return True
 
 
@@ -135,6 +208,16 @@ def category_operator_is_allowed(category: str, operator: dict[str, Any]) -> boo
         return _has_any(evidence_text, COLD_MODALITY_TERMS) or not _has_any(
             evidence_text, REHAB_TERMS
         )
+    if category == "recovery_modalities":
+        return _has_any(evidence_text, RECOVERY_MODALITY_TERMS) and not _has_any(
+            evidence_text, REHAB_TERMS
+        )
+    if category == "aesthetics_medspa":
+        return _has_any(evidence_text, AESTHETICS_TERMS)
+    if category == "womens_health":
+        return _has_any(evidence_text, WOMENS_HEALTH_TERMS)
+    if category == "social_hospitality":
+        return _has_any(evidence_text, SOCIAL_HOSPITALITY_TERMS)
     if category == "spa_thermal":
         return not _has_any(evidence_text, SPA_EXCLUSION_TERMS)
     if category in {"nutrition_longevity", "preventive_diagnostic"}:

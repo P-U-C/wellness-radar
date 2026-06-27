@@ -18,12 +18,17 @@ class FakeResult:
     def fetchall(self) -> list[dict[str, Any]]:
         return self.rows
 
+    def fetchone(self) -> dict[str, Any] | None:
+        return self.rows[0] if self.rows else None
+
 
 class FakeConn:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self.rows = rows
+        self.queries: list[tuple[str, Any]] = []
 
     def execute(self, query: str, params: list[Any] | None = None) -> FakeResult:
+        self.queries.append((query, params))
         return FakeResult(self.rows)
 
 
@@ -54,7 +59,60 @@ def test_leads_return_neighborhood_and_contact_type(monkeypatch) -> None:
     assert response.status_code == 200
     item = response.json()["items"][0]
     assert item["neighborhood"] == "Mount Pleasant"
+    assert item["category"] == "recovery_contrast_therapy"
     assert item["contacts"][0]["contact_type"] == "website"
+
+
+def test_leads_support_category_and_bundle_filters(monkeypatch) -> None:
+    row = _lead_db_row()
+    fake_conn = FakeConn([row])
+
+    @contextmanager
+    def fake_connection() -> Iterator[FakeConn]:
+        yield fake_conn
+
+    monkeypatch.setattr(operators, "get_connection", fake_connection)
+    app = FastAPI()
+    app.include_router(operators.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/leads?category=recovery_contrast_therapy&bundle=cold-plunge-contrast-therapy"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["category"] == "recovery_contrast_therapy"
+    assert body["meta"]["bundle"] == "cold-plunge-contrast-therapy"
+    assert body["items"][0]["category"] == "recovery_contrast_therapy"
+    query, params = fake_conn.queries[0]
+    assert "bundle_operator_membership" in query
+    assert params[:3] == [
+        "recovery_contrast_therapy",
+        "cold-plunge-contrast-therapy",
+        "cold-plunge-contrast-therapy",
+    ]
+
+
+def test_lead_detail_returns_source_backed_lead(monkeypatch) -> None:
+    row = _lead_db_row()
+
+    @contextmanager
+    def fake_connection() -> Iterator[FakeConn]:
+        yield FakeConn([row])
+
+    monkeypatch.setattr(operators, "get_connection", fake_connection)
+    app = FastAPI()
+    app.include_router(operators.router)
+    client = TestClient(app)
+
+    response = client.get("/leads/op_tality")
+
+    assert response.status_code == 200
+    item = response.json()
+    assert item["id"] == "op_tality"
+    assert item["category"] == "recovery_contrast_therapy"
+    assert item["source_refs"] == [SOURCE_REF]
 
 
 def test_leads_csv_export_is_public(monkeypatch) -> None:

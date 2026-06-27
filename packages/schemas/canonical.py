@@ -16,9 +16,12 @@ CATEGORIES = [
     "public_recreation",
     "mind_meditation",
     "spa_thermal",
+    "aesthetics_medspa",
     "nutrition_longevity",
     "allied_health",
     "womens_health",
+    "social_hospitality",
+    "recovery_modalities",
     "preventive_diagnostic",
     "mental_health",
     "community_social_wellness",
@@ -79,6 +82,8 @@ class CanonicalOperator:
     source_refs: list[dict[str, Any]]
     confidence_score: float
     occurred_at: datetime
+    is_mobile: bool = False
+    service_area: dict[str, Any] | None = None
     phone: str | None = None
     website: str | None = None
     social_links: dict[str, Any] = field(default_factory=dict)

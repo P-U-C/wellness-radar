@@ -25,7 +25,9 @@ DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5"
 
 LEAD_WEDGE_CATEGORIES = [
     "recovery_contrast_therapy",
+    "recovery_modalities",
     "spa_thermal",
+    "social_hospitality",
     "community_social_wellness",
 ]
 
@@ -34,9 +36,12 @@ CATEGORY_LABELS = {
     "fitness_movement": "fitness and movement",
     "mind_meditation": "mind and meditation",
     "spa_thermal": "spa and thermal",
+    "aesthetics_medspa": "aesthetics and med-spa",
     "nutrition_longevity": "nutrition and longevity",
     "allied_health": "allied health",
     "womens_health": "women's health",
+    "social_hospitality": "social hospitality wellness",
+    "recovery_modalities": "recovery modalities",
     "preventive_diagnostic": "preventive and diagnostic",
     "mental_health": "mental health",
     "community_social_wellness": "community and social wellness",
